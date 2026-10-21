@@ -1,0 +1,22 @@
+Files Recovery FREE — License Notice
+====================================
+
+Copyright (c) 2026 Files Recovery FREE. All rights reserved.
+
+This repository contains proprietary and confidential software. The source
+code, design assets, brand elements and documentation are the intellectual
+property of the project owner and are protected by copyright law.
+
+You may NOT copy, modify, merge, publish, distribute, sublicense, sell or
+use any part of this software without explicit written permission from the
+copyright holder, except where a separate signed agreement states otherwise.
+
+Third-party components:
+- Flutter framework and its dependencies are governed by their own
+  licenses (BSD-style, see https://flutter.dev).
+- The bundled Carlito font family is distributed under the SIL Open Font
+  License 1.1 (https://openfontlicense.org/).
+
+TODO(founder): replace this notice with the final license choice
+(proprietary EULA, dual license, or an OSI license) before any public
+release or App Store submission.
