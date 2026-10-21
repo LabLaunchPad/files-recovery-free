@@ -1,0 +1,13 @@
+[package]
+name = "recovery-core"
+version = "0.2.0"
+edition = "2021"
+description = "Signature-based file carving engine (Phase 2 core) for Files Recovery FREE"
+publish = false
+
+[dependencies]
+aho-corasick = "1.1"
+memchr = "2.7"
+
+[lib]
+name = "recovery_core"

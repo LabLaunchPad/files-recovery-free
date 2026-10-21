@@ -1,0 +1,16 @@
+=== slice cputype=16777223 offset=16384 segments=5 symbols=13720
+=== slice cputype=16777228 offset=3244032 segments=5 symbols=10747
+
+=== bucket counts ===
+recovery_ffi       14
+scan_carve          2
+aho               426
+memchr             46
+swift_ui            3
+
+=== recovery/scan FFI surface (unique, first 80) ===
+  recovery_ffi
+  recovery_core
+  recovery_core2fs8dos_time
+
+=== top rust module namespaces ===

@@ -1,0 +1,13 @@
+[package]
+name = "recovery-ffi"
+version = "0.2.0"
+edition = "2021"
+description = "C ABI for the Files Recovery FREE carving engine (loaded by Flutter via dart:ffi)"
+publish = false
+
+[dependencies]
+recovery-core = { path = "../recovery-core" }
+
+[lib]
+name = "recovery_core_ffi"
+crate-type = ["cdylib", "rlib"]

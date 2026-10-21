@@ -50,3 +50,6 @@ app.*.map.json
 # Machine-specific paths
 **/local.properties
 .kotlin/
+
+# Rust build artifacts
+/rust/target/
