@@ -2,8 +2,12 @@ name: Build All Platforms
 
 # CI pipeline.
 # - Pull requests -> analyze + test gate (fast feedback)
-# - Push to main / tag v* -> full artifact builds for
+# - Push to main / tag v* -> full bundle builds for
 #   Windows, macOS, Linux, Android and iOS
+#
+# Bundles attach to the auto-created GitHub Release `build-<run_number>`.
+# (actions/upload-artifact is rejected on private repos whose Actions
+#  storage quota is 0; Release asset storage is free and unlimited.)
 #
 # Verified locally on 2026-10-21:
 #  - flutter analyze: 0 issues
@@ -25,6 +29,9 @@ concurrency:
   group: build-all-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   test:
     name: Analyze + Test (ubuntu)
@@ -37,6 +44,14 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Prepare CI release (main pushes only)
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "CI build ${{ github.run_number }} — ${{ github.sha }}"
+          prerelease: true
+          body: "Automated cross-platform bundles for commit ${{ github.sha }}. Assets appear as the platform jobs finish."
 
   linux:
     name: Linux desktop
@@ -53,10 +68,13 @@ jobs:
           sudo apt-get install -y ninja-build libgtk-3-dev
       - run: flutter config --enable-linux-desktop
       - run: flutter build linux --release
-      - uses: actions/upload-artifact@v4
+      - name: Zip bundle
+        run: cd build/linux/x64/release && zip -qr "$GITHUB_WORKSPACE/files-recovery-free-linux-x64.zip" bundle
+      - name: Attach to CI release
+        uses: softprops/action-gh-release@v2
         with:
-          name: files-recovery-free-linux-x64
-          path: build/linux/x64/release/bundle/
+          tag_name: build-${{ github.run_number }}
+          files: files-recovery-free-linux-x64.zip
 
   windows:
     name: Windows desktop
@@ -70,10 +88,14 @@ jobs:
           channel: stable
       - run: flutter config --enable-windows-desktop
       - run: flutter build windows --release
-      - uses: actions/upload-artifact@v4
+      - name: Zip bundle
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath files-recovery-free-windows-x64.zip
+      - name: Attach to CI release
+        uses: softprops/action-gh-release@v2
         with:
-          name: files-recovery-free-windows-x64
-          path: build/windows/x64/runner/Release/
+          tag_name: build-${{ github.run_number }}
+          files: files-recovery-free-windows-x64.zip
 
   macos:
     name: macOS desktop
@@ -87,10 +109,13 @@ jobs:
           channel: stable
       - run: flutter config --enable-macos-desktop
       - run: flutter build macos --release
-      - uses: actions/upload-artifact@v4
+      - name: Zip bundle
+        run: cd build/macos/Build/Products/Release && zip -qry "$GITHUB_WORKSPACE/files-recovery-free-macos.zip" *.app
+      - name: Attach to CI release
+        uses: softprops/action-gh-release@v2
         with:
-          name: files-recovery-free-macos
-          path: build/macos/Build/Products/Release/*.app
+          tag_name: build-${{ github.run_number }}
+          files: files-recovery-free-macos.zip
 
   android:
     name: Android APK
@@ -107,10 +132,13 @@ jobs:
         with:
           channel: stable
       - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
+      - name: Stage APK
+        run: mv build/app/outputs/flutter-apk/app-release.apk files-recovery-free-android.apk
+      - name: Attach to CI release
+        uses: softprops/action-gh-release@v2
         with:
-          name: files-recovery-free-android-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: build-${{ github.run_number }}
+          files: files-recovery-free-android.apk
 
   ios:
     name: iOS (unsigned build)
@@ -123,7 +151,10 @@ jobs:
         with:
           channel: stable
       - run: flutter build ios --release --no-codesign
-      - uses: actions/upload-artifact@v4
+      - name: Zip bundle
+        run: cd build/ios/iphoneos && zip -qry "$GITHUB_WORKSPACE/files-recovery-free-ios-unsigned.zip" Runner.app
+      - name: Attach to CI release
+        uses: softprops/action-gh-release@v2
         with:
-          name: files-recovery-free-ios-unsigned
-          path: build/ios/iphoneos/Runner.app
+          tag_name: build-${{ github.run_number }}
+          files: files-recovery-free-ios-unsigned.zip

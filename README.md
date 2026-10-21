@@ -69,7 +69,7 @@ The entire UI + 50-test suite runs unchanged against the new engine.
 | Golden matrix | 4 viewports (phone-portrait / phone-landscape / tablet / desktop) × 6 steps + license sheet + receipt — all pass, deterministic |
 | `flutter build web --release` | ✓ + full interactive browser walkthrough (12 evidence screenshots) |
 | `flutter build linux --release` | ✓ native GTK binary, launched live under Xvfb, real pointer interaction captured |
-| Android / iOS / macOS / Windows | CI (`.github/workflows/build-all.yml`) builds all four on push to `main` and on tags (`v*`) |
+| Android / iOS / macOS / Windows | CI (`.github/workflows/build-all.yml`) builds all five on push to `main` / tags (`v*`); bundles attach to the auto-created GitHub Release `build-<run number>` (works around private-repo Actions storage quota) |
 
 ## Build & run
 
