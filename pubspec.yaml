@@ -1,0 +1,36 @@
+name: files_recovery_free
+description: >-
+  Files Recovery FREE — cross-platform file recovery wizard.
+  Scan free, recover safely. Phase 1 ships the complete six-step UX on a
+  simulated engine; Phase 2 swaps in the Rust core via FFI behind the same
+  RecoveryEngine contract.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/evidence/
+  fonts:
+    - family: Carlito
+      fonts:
+        - asset: assets/fonts/Carlito-Regular.ttf
+        - asset: assets/fonts/Carlito-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Carlito-Italic.ttf
+          style: italic
+        - asset: assets/fonts/Carlito-BoldItalic.ttf
+          weight: 700
+          style: italic
