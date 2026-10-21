@@ -55,10 +55,9 @@ lib/
   l10n/app_strings.dart <- every user-facing string (English)
 ```
 
-**Phase 2 (real recovery):** implement `RecoveryEngine` with a Rust core
-exposed via FFI (carving: aho-corasick signatures, memchr scanning — the
-same pattern the benchmark product uses with `librecovery_ffi`).
-The entire UI + 50-test suite runs unchanged against the new engine.
+**Phase 2 (shipped):** the Rust carving core is live behind the same
+`RecoveryEngine` contract — `FfiRecoveryEngine` via dart:ffi. The entire
+UI + test suite runs unchanged against real block-level scanning.
 
 ## Verification (all green — evidence in [`evidence/`](evidence/))
 
@@ -91,6 +90,33 @@ Run the web build anywhere: `python3 -m http.server 8000 -d build/web`
 ```bash
 flutter test --update-goldens test/golden_test.dart
 ```
+
+## Phase 2 — the real engine is here
+
+`rust/` is a two-crate workspace loaded through `dart:ffi`:
+
+```
+rust/
+  crates/recovery-core   signature carving: aho-corasick headers, memchr
+                         footers, size-field extraction, follow-up footer
+                         search, duplicate fingerprints, survey / backup /
+                         recover+verify — all behind a BlockSource trait
+  crates/recovery-ffi    stable C ABI: sync workers, poll-based events,
+                         engine state finalized exactly at terminal delivery
+```
+
+Run the real engine (Linux bundles ship the dylib; macOS/Windows via CI):
+
+```bash
+cargo test --manifest-path rust/Cargo.toml --workspace   # 8 engine tests
+flutter test                                             # 53 tests incl. FFI
+flutter run -d linux --dart-define=FRF_ENGINE_FFI=true
+```
+
+Without the define (or without the dylib) the app falls back to the
+simulated engine — zero regression for existing bundles.
+See `docs/phase2_gap_analysis.md` for the REA-assisted gap analysis and the
+Phase 3 backlog.
 
 ## Repository layout
 

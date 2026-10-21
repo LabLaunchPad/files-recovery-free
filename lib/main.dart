@@ -8,11 +8,26 @@ import 'package:flutter/material.dart';
 
 import 'app_brand.dart';
 import 'design/tokens.dart';
+import 'engine/ffi_engine.dart';
+import 'engine/recovery_engine.dart';
+import 'engine/simulated_engine.dart';
 import 'screens/wizard_screen.dart';
 import 'state/recovery_session.dart';
 
+/// Engine selection: `--dart-define=FRF_ENGINE_FFI=true` runs the Phase 2
+/// Rust carving core (falls back to the simulated engine when the dynamic
+/// library is not bundled). Default stays the simulated engine.
+RecoveryEngine _selectEngine() {
+  const useFfi = bool.fromEnvironment('FRF_ENGINE_FFI');
+  if (useFfi) {
+    final ffi = FfiRecoveryEngine.tryLoad();
+    if (ffi != null) return ffi;
+  }
+  return SimulatedEngine();
+}
+
 void main() {
-  runApp(FilesRecoveryFreeApp(session: RecoverySession()));
+  runApp(FilesRecoveryFreeApp(session: RecoverySession(engine: _selectEngine())));
 }
 
 class FilesRecoveryFreeApp extends StatelessWidget {
