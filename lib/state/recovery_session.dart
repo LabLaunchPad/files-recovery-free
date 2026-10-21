@@ -49,6 +49,9 @@ class RecoverySession extends ChangeNotifier {
   final Set<String> selectedFileIds = {};
   final LookFilter filter = LookFilter();
 
+  List<RecoveredFile>? _visibleFilesCache;
+  int? _selectedBytesCache;
+
   bool licensed = false; // free tier gates recovery; scanning stays free
   RecoverPhase recoverPhase = RecoverPhase.configure;
   final List<RecoveryReceipt> receipts = [];
@@ -63,6 +66,7 @@ class RecoverySession extends ChangeNotifier {
   // ------------------------------------------------------------- derived
   bool get canGoBack => _step != WizardStep.choose && !busy;
   List<RecoveredFile> get visibleFiles {
+    if (_visibleFilesCache != null) return _visibleFilesCache!;
     Iterable<RecoveredFile> f = foundFiles;
     if (filter.kind != null) f = f.where((x) => x.kind == filter.kind);
     if (filter.state != null) f = f.where((x) => x.state == filter.state);
@@ -73,13 +77,26 @@ class RecoverySession extends ChangeNotifier {
           x.name.toLowerCase().contains(q) ||
           x.relativeFolder.toLowerCase().contains(q));
     }
-    return f.toList();
+    _visibleFilesCache = List.unmodifiable(f.toList());
+    return _visibleFilesCache!;
   }
 
   int get selectedCount => selectedFileIds.length;
-  int get selectedBytes => foundFiles
-      .where((f) => selectedFileIds.contains(f.id))
-      .fold(0, (a, f) => a + f.sizeBytes);
+  int get selectedBytes {
+    if (_selectedBytesCache != null) return _selectedBytesCache!;
+    if (selectedFileIds.isEmpty) {
+      _selectedBytesCache = 0;
+      return 0;
+    }
+    int total = 0;
+    for (final f in foundFiles) {
+      if (selectedFileIds.contains(f.id)) {
+        total += f.sizeBytes;
+      }
+    }
+    _selectedBytesCache = total;
+    return total;
+  }
   bool get needsUpgradeForSelection =>
       !licensed && FreeTier.needsUpgrade(selectedCount);
 
@@ -152,6 +169,8 @@ class RecoverySession extends ChangeNotifier {
     busy = true;
     errorText = null;
     foundFiles = [];
+    _visibleFilesCache = null;
+    _selectedBytesCache = null;
     notifyListeners();
     _sub?.cancel();
     _sub = engine
@@ -189,6 +208,8 @@ class RecoverySession extends ChangeNotifier {
   Future<void> _loadResults() async {
     try {
       foundFiles = await engine.browse('session');
+      _visibleFilesCache = null;
+      _selectedBytesCache = null;
       selectedFileIds.clear();
       _step = WizardStep.look;
     } catch (e) {
@@ -209,21 +230,25 @@ class RecoverySession extends ChangeNotifier {
     selectedFileIds.contains(fileId)
         ? selectedFileIds.remove(fileId)
         : selectedFileIds.add(fileId);
+    _selectedBytesCache = null;
     notifyListeners();
   }
 
   void selectAllVisible() {
     selectedFileIds.addAll(visibleFiles.map((f) => f.id));
+    _selectedBytesCache = null;
     notifyListeners();
   }
 
   void clearSelection() {
     selectedFileIds.clear();
+    _selectedBytesCache = null;
     notifyListeners();
   }
 
   void applyFilter(void Function(LookFilter) mutate) {
     mutate(filter);
+    _visibleFilesCache = null;
     notifyListeners();
   }
 
@@ -319,6 +344,8 @@ class RecoverySession extends ChangeNotifier {
     _step = WizardStep.choose;
     selectedFileIds.clear();
     foundFiles = [];
+    _visibleFilesCache = null;
+    _selectedBytesCache = null;
     filesFound = 0;
     progressFraction = 0;
     unreadableAreas = 0;

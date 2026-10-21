@@ -66,7 +66,13 @@ class LookStep extends StatelessWidget {
                         : _selectionBar(s);
                   }
                   final f = files[i - 2];
-                  return _FileRow(file: f, session: s);
+                  final selected = s.selectedFileIds.contains(f.id);
+                  return _FileRow(
+                    key: ValueKey(f.id),
+                    file: f,
+                    selected: selected,
+                    onTap: () => s.toggleSelect(f.id),
+                  );
                 },
               ),
             ),
@@ -175,8 +181,14 @@ class LookStep extends StatelessWidget {
 
 class _FileRow extends StatelessWidget {
   final RecoveredFile file;
-  final RecoverySession session;
-  const _FileRow({required this.file, required this.session});
+  final bool selected;
+  final VoidCallback onTap;
+  const _FileRow({
+    super.key,
+    required this.file,
+    required this.selected,
+    required this.onTap,
+  });
 
   IconData get _icon {
     switch (file.kind) {
@@ -199,7 +211,6 @@ class _FileRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = session.selectedFileIds.contains(file.id);
     return Padding(
       padding: const EdgeInsets.only(bottom: FrfSpacing.s),
       child: Material(
@@ -209,7 +220,7 @@ class _FileRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(FrfRadius.control),
         child: InkWell(
           borderRadius: BorderRadius.circular(FrfRadius.control),
-          onTap: () => session.toggleSelect(file.id),
+          onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(
                 horizontal: FrfSpacing.m, vertical: FrfSpacing.s),
