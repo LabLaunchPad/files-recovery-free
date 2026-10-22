@@ -261,9 +261,19 @@ jobs:
       - name: Assert the engine is linked INTO the Runner binary
         run: |
           test -f build/ios/iphoneos/Runner.app/Runner
-          nm build/ios/iphoneos/Runner.app/Runner | grep -q "_frf_version" \
-            || { echo "engine NOT linked into Runner"; exit 1; }
-          echo "engine symbols linked into Runner: $(nm build/ios/iphoneos/Runner.app/Runner | grep -c '_frf_')"
+          echo "== staged archive frf_ symbols =="
+          nm ios/Engine/librecovery_core_ffi.a 2>/dev/null | grep -c "_frf_" || true
+          echo "== link settings in effect =="
+          (cd ios && xcodebuild -workspace Runner.xcworkspace -scheme Runner \
+             -configuration Release -showBuildSettings 2>/dev/null \
+             | grep -i "OTHER_LDFLAGS" || true)
+          if nm build/ios/iphoneos/Runner.app/Runner | grep -q "_frf_version"; then
+            echo "engine symbols linked into Runner: $(nm build/ios/iphoneos/Runner.app/Runner | grep -c '_frf_')"
+          else
+            echo "engine NOT linked into Runner — nm sample of Runner:"
+            nm build/ios/iphoneos/Runner.app/Runner | head -5 || true
+            exit 1
+          fi
       - name: Zip bundle
         run: cd build/ios/iphoneos && zip -qry "$GITHUB_WORKSPACE/files-recovery-free-ios-unsigned.zip" Runner.app
       - name: Attach to CI release
