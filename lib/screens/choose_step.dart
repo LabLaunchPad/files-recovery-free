@@ -118,7 +118,15 @@ class _DeviceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final locked = device.isSystemDisk;
     final disabled = locked || onTap == null;
-    return Opacity(
+    return Semantics(
+      container: true,
+      button: !locked,
+      enabled: !locked,
+      selected: selected,
+      label: '${device.name}, ${device.sizeLabel}'
+          '${device.fileSystem != null ? ', ${device.fileSystem}' : ''}'
+          '${locked ? ', ${S.chooseSystemLocked}' : ''}',
+      child: Opacity(
       opacity: locked ? 0.72 : 1,
       child: Padding(
         padding: const EdgeInsets.only(bottom: FrfSpacing.m),
@@ -214,6 +222,7 @@ class _DeviceCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

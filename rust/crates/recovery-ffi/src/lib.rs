@@ -148,6 +148,47 @@ pub unsafe extern "C" fn frf_free_bytes(path: *const c_char) -> c_ulonglong {
     free_bytes_inner(p).unwrap_or(0)
 }
 
+/// Verifies an Ed25519-signed Pro license key.
+/// 1 = valid perpetual, 2 = valid time-limited, -1 = format,
+/// -2 = signature, -3 = expired. Detail in frf_last_error.
+#[no_mangle]
+pub unsafe extern "C" fn frf_license_verify(key: *const c_char) -> c_int {
+    use recovery_core::license::LicenseError;
+    let Some(k) = read_cstr(key) else {
+        set_err("null key");
+        return -1;
+    };
+    let now_days = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or(0)) as u32;
+    match recovery_core::license::verify_license_key(
+        &k,
+        &recovery_core::license::default_pubkey(),
+        now_days,
+    ) {
+        Ok(info) => {
+            if info.perpetual {
+                1
+            } else {
+                2
+            }
+        }
+        Err(e @ (LicenseError::Format | LicenseError::Signature | LicenseError::Expired)) => {
+            set_err(match e {
+                LicenseError::Format => "key format is not a Files Recovery Pro key",
+                LicenseError::Signature => "signature verification failed",
+                LicenseError::Expired => "this license key has expired",
+            });
+            match e {
+                LicenseError::Format => -1,
+                LicenseError::Signature => -2,
+                LicenseError::Expired => -3,
+            }
+        }
+    }
+}
+
 #[cfg(unix)]
 fn free_bytes_inner(path: &str) -> Option<u64> {
     let c = CString::new(path).ok()?;

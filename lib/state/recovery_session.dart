@@ -14,6 +14,7 @@ import '../engine/recovery_engine.dart';
 import '../engine/simulated_engine.dart';
 import 'destination.dart';
 import 'image_import.dart';
+import 'license_store.dart';
 
 enum WizardStep { choose, survey, backup, scan, look, recover }
 
@@ -53,6 +54,13 @@ class RecoverySession extends ChangeNotifier {
   final LookFilter filter = LookFilter();
 
   bool licensed = false; // free tier gates recovery; scanning stays free
+
+  /// True when [licensed] came from an Ed25519-SIGNED key (a real
+  /// purchase). Dev keys accepted by the simulated engine stay false.
+  bool licenseSigned = false;
+
+  /// The key currently activated (normalized), persisted when signed.
+  String? licenseKey;
   RecoverPhase recoverPhase = RecoverPhase.configure;
   final List<RecoveryReceipt> receipts = [];
   String? errorText;
@@ -144,8 +152,37 @@ class RecoverySession extends ChangeNotifier {
   StreamSubscription<EngineProgress>? _sub;
   bool _disposed = false;
 
-  RecoverySession({RecoveryEngine? engine})
+  RecoverySession({RecoveryEngine? engine, this.licenseStore})
       : engine = engine ?? SimulatedEngine();
+
+  /// Where the Pro key persists across restarts (shared_preferences on
+  /// real builds, in-memory in tests). Null = no persistence.
+  final LicenseStore? licenseStore;
+
+  /// Restores a persisted signed key at startup. Stale keys that no
+  /// longer verify (foreign engine build, expired trial) are dropped.
+  Future<void> restoreLicense() async {
+    final store = licenseStore;
+    if (store == null) return;
+    final String? saved;
+    try {
+      saved = await store.load();
+    } catch (_) {
+      return; // persistence unavailable — run unlicensed, never crash
+    }
+    if (saved == null || saved.isEmpty) return;
+    final v = await engine.verifyLicense(saved);
+    if (v.valid) {
+      licensed = true;
+      licenseSigned = v.signed;
+      licenseKey = saved;
+      _safeNotify();
+    } else {
+      try {
+        await store.clear();
+      } catch (_) {}
+    }
+  }
 
   // ------------------------------------------------------------- derived
   bool get canGoBack => _step != WizardStep.choose && !busy;
@@ -357,16 +394,24 @@ class RecoverySession extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- license
-  /// Simulated license activation. Real builds swap this for a signed-key
-  /// verifier (the same CryptoKit/Ed25519 pattern the benchmark app uses).
-  bool activateLicense(String key) {
-    final normalized = key.trim().toUpperCase();
-    final ok = RegExp(r'^FRF(-[A-Z2-7]{4}){2}$').hasMatch(normalized);
-    if (ok) {
-      licensed = true;
-      notifyListeners();
+  /// Activates a Pro key via the ENGINE (never a local regex — real
+  /// engines verify the Ed25519 signature, the simulated engine accepts
+  /// dev-format keys). Signed keys are persisted for next launch.
+  Future<bool> activateLicense(String key) async {
+    final v = await engine.verifyLicense(key);
+    if (!v.valid) return false;
+    licensed = true;
+    licenseSigned = v.signed;
+    licenseKey = key.trim();
+    if (v.signed && licenseStore != null) {
+      try {
+        await licenseStore!.save(licenseKey!);
+      } catch (_) {
+        // persistence is best-effort; the unlock stays active this run
+      }
     }
-    return ok;
+    notifyListeners();
+    return true;
   }
 
   // ------------------------------------------------------------- recover

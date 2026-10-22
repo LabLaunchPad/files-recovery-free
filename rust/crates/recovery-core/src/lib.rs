@@ -13,6 +13,8 @@
 pub mod aligned;
 pub mod blocksource;
 pub mod enumerate;
+pub mod exif;
+pub mod license;
 pub mod ops;
 pub mod scanner;
 pub mod signatures;

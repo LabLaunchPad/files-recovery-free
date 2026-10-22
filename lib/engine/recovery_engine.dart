@@ -152,6 +152,19 @@ class RecoveryReceipt {
   });
 }
 
+/// Result of verifying a license key against the engine.
+///
+/// [signed] distinguishes real Ed25519-verified keys from format-only
+/// "dev keys" accepted by the simulated engine — the UI must never
+/// present the latter as a purchase receipt.
+class LicenseVerification {
+  final bool valid;
+  final bool signed;
+  final String? detail;
+  const LicenseVerification(
+      {required this.valid, required this.signed, this.detail});
+}
+
 /// THE engine boundary. Screens and state machine depend on this only.
 abstract interface class RecoveryEngine {
   Future<List<DeviceInfo>> listDevices();
@@ -195,6 +208,14 @@ abstract interface class RecoveryEngine {
     throw EngineException(
         'This engine cannot open disk images.',
         'addImageSource unsupported on $runtimeType');
+  }
+
+  /// Verifies a Pro license key. Real engines check the Ed25519 signature
+  /// against the embedded verification key; the simulated engine accepts
+  /// format-only dev keys (signed = false).
+  Future<LicenseVerification> verifyLicense(String key) async {
+    return LicenseVerification(
+        valid: false, signed: false, detail: 'unsupported on $runtimeType');
   }
 
   /// Free bytes on the volume holding [dir], visible to the current

@@ -80,6 +80,7 @@ class S {
   static const scanTitle = 'Scanning';
   static const scanFound = 'files found';
   static const scanUnreadable = 'unreadable areas';
+  static const scanProgressLabel = 'Progress';
   static const scanFromCopy = 'Scanning the safety copy';
   static const scanFromOriginal = 'Scanning the original drive';
   static const scanCancel = 'Cancel scan';
@@ -132,10 +133,16 @@ class S {
   static const licenseExplainer =
       'A one-time purchase — no subscription. Your license key unlocks '
       'unlimited recovery on every platform you sign in from.';
-  static const licenseField = 'License key (e.g. FRF-ABCD-2345)';
+  static const licenseSteps =
+      'How it works: 1 — get a key from the product page. 2 — paste it '
+      'below. 3 — the app verifies the key signature on this device.';
+  static const licenseGetKey = 'Get a Pro key';
+  static const licenseField = 'License key';
+  static const licenseFieldHelper = 'Paste the key exactly as delivered';
   static const licenseActivate = 'Activate';
-  static const licenseBadKey = 'That key does not look right. Check the '
-      'format: FRF-XXXX-XXXX.';
+  static const licenseVerifying = 'Verifying…';
+  static const licenseBadKey = 'That key was not accepted. '
+      'Check it against the delivery email — it starts with FRF1-.';
   static const licenseOk = 'Pro unlocked — thank you!';
   static const priceLabel = AppBrand.proPrice;
 

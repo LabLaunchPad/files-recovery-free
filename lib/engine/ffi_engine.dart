@@ -152,6 +152,8 @@ typedef _ReceiptGetC = Int32 Function(Int32, Pointer<FrfReceipt>);
 typedef _ReceiptGetD = int Function(int, Pointer<FrfReceipt>);
 typedef _FreeBytesC = Uint64 Function(Pointer<Uint8>);
 typedef _FreeBytesD = int Function(Pointer<Uint8>);
+typedef _LicenseVerifyC = Int32 Function(Pointer<Uint8>);
+typedef _LicenseVerifyD = int Function(Pointer<Uint8>);
 
 final class FrfSurveySession extends Opaque {}
 
@@ -200,6 +202,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
         _lib.lookupFunction<_ReceiptGetC, _ReceiptGetD>('frf_receipt_get');
     _freeBytes =
         _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('frf_free_bytes');
+    _licenseVerify =
+        _lib.lookupFunction<_LicenseVerifyC, _LicenseVerifyD>('frf_license_verify');
   }
 
   final DynamicLibrary _lib;
@@ -227,6 +231,7 @@ class FfiRecoveryEngine implements RecoveryEngine {
   late final _ReceiptCountD _receiptCount;
   late final _ReceiptGetD _receiptGet;
   late final _FreeBytesD _freeBytes;
+  late final _LicenseVerifyD _licenseVerify;
 
   Pointer<FrfEvent>? _eventBuf;
   Pointer<FrfSourceInfo>? _srcBuf;
@@ -374,6 +379,32 @@ class FfiRecoveryEngine implements RecoveryEngine {
       sourcePath: p.isEmpty ? null : p,
       mountPoint: mount.isEmpty ? null : mount,
     );
+  }
+
+  /// Contract: Ed25519 verification lives in the engine (frf_license_verify).
+  /// rc: 1 perpetual, 2 time-limited, -1 format, -2 signature, -3 expired.
+  @override
+  Future<LicenseVerification> verifyLicense(String key) async {
+    final p = _cstr(key);
+    try {
+      switch (_licenseVerify(p)) {
+        case 1:
+          return const LicenseVerification(valid: true, signed: true);
+        case 2:
+          return const LicenseVerification(
+              valid: true, signed: true, detail: 'time-limited key');
+        case -3:
+          return const LicenseVerification(
+              valid: false, signed: true, detail: 'expired');
+        default:
+          return LicenseVerification(
+              valid: false, signed: false, detail: _err());
+      }
+    } catch (_) {
+      return LicenseVerification(valid: false, signed: false, detail: _err());
+    } finally {
+      _freeC(p);
+    }
   }
 
   // ------------------------------------------------------------- devices
