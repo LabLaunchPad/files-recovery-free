@@ -37,6 +37,13 @@ class S {
   static const chooseNotMounted = 'not mounted';
   static const chooseRefresh = 'Rescan drives';
   static const chooseContinue = 'Continue';
+  static const chooseImportImage = 'Import a disk image file…';
+  static const chooseImportingImage = 'Opening image…';
+  static const chooseDeepScanTitle = 'Deep scan mode';
+  static const chooseDeepScanBody =
+      'This drive has no readable filesystem, so every block is read '
+      'directly. Scans take longer — but files can be found even without '
+      'a filesystem.';
 
   // Survey step
   static const surveyTitle = 'Quick survey';

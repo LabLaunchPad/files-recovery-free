@@ -13,6 +13,7 @@ import '../app_brand.dart';
 import '../engine/recovery_engine.dart';
 import '../engine/simulated_engine.dart';
 import 'destination.dart';
+import 'image_import.dart';
 
 enum WizardStep { choose, survey, backup, scan, look, recover }
 
@@ -73,6 +74,13 @@ class RecoverySession extends ChangeNotifier {
 
   /// The folder picker (file_selector on real platforms; faked in tests).
   DirectoryPicker pickDirectory = platformPickDirectory;
+
+  /// The disk-image file picker + SAF bridge (faked in tests).
+  ImageFilePicker pickImageFile = platformPickImageFile;
+  SafBridge safBridge = SafBridge();
+
+  /// True while a disk-image import (pick → ingest → register) is running.
+  bool importingImage = false;
 
   /// Writability-probe switch. Tests/CI set false to keep widget tests
   /// deterministic (the probe does real file IO that fake async never
@@ -188,6 +196,38 @@ class RecoverySession extends ChangeNotifier {
     selectedDevice = d;
     notifyListeners();
     return true;
+  }
+
+  /// Choose → "Import a disk image": pick a file, route Android
+  /// `content://` URIs through SAF ingestion into the app cache, register
+  /// with the engine, refresh the list and select the new source. User
+  /// cancel is a no-op; failures land in [errorText]/[errorCode].
+  Future<void> importDiskImage() async {
+    if (busy || importingImage) return;
+    importingImage = true;
+    errorText = null;
+    errorCode = null;
+    _safeNotify();
+    try {
+      final picked = await pickImageFile();
+      if (picked == null || picked.isEmpty) return;
+      var path = picked;
+      if (safBridge.shouldIngest(path)) {
+        path = await safBridge.ingestToCache(path);
+      }
+      final device = await engine.addImageSource(path);
+      await refreshDevices();
+      final match = devices.where((d) => d.id == device.id).toList();
+      selectedDevice = match.isNotEmpty ? match.first : device;
+    } on EngineException catch (e) {
+      _fail(e.userMessage, technical: 'import-image: $e', code: e.code);
+    } catch (e) {
+      _fail(SafBridge.ingestFailed,
+          technical: 'import-image: $e', code: FrfErrorCode.invalidSource);
+    } finally {
+      importingImage = false;
+      _safeNotify();
+    }
   }
 
   // -------------------------------------------------------------- survey

@@ -42,6 +42,16 @@ class DeviceInfo {
   });
 
   String get sizeLabel => humanBytes(totalBytes);
+
+  /// True when this source has NO readable filesystem — an unmounted disk
+  /// or a raw device node. Scanning it is a "deep scan": the engine reads
+  /// every block directly (aligned windows on raw nodes), which is slower
+  /// but finds files even without a filesystem. Imported disk images keep
+  /// the plain flow (they are files, and the banner would just confuse).
+  bool get isRawDevice {
+    if (kind == DeviceKind.diskImage) return false;
+    return !mounted && (fileSystem == null || fileSystem!.isEmpty);
+  }
 }
 
 class SurveyResult {
@@ -177,6 +187,15 @@ abstract interface class RecoveryEngine {
   /// Engine-sourced evidence — the UI must never fabricate these.
   /// Returns an empty list before the first recovery.
   Future<List<RecoveryReceipt>> receipts();
+
+  /// Registers a disk-image file (`.img`/`.dd`/backup copy) as a scannable
+  /// source and returns its [DeviceInfo]. The path must be readable by the
+  /// engine (SAF `content://` URIs are materialized by the session first).
+  Future<DeviceInfo> addImageSource(String path) async {
+    throw EngineException(
+        'This engine cannot open disk images.',
+        'addImageSource unsupported on $runtimeType');
+  }
 
   /// Free bytes on the volume holding [dir], visible to the current
   /// (unprivileged) user. Returns 0 when unknown — callers degrade to a

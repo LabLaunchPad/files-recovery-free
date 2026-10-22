@@ -1,1 +1,13 @@
+// Debug.xcconfig — Flutter-generated config + FRF engine link.
+//
+// The Rust engine is statically linked into the Runner binary so the Dart
+// FFI layer can find its symbols via DynamicLibrary.process(). The engine
+// archive is produced by scripts/build_ios_engine.sh (or the CI iOS job)
+// into Engine/librecovery_core_ffi.a — see that script + docs/PERMISSIONS.
+//
+// -force_load is REQUIRED: nothing in the app references the engine's C
+// symbols directly (dart:ffi looks them up at runtime), and a plain link
+// of a static archive would strip every object as "unused".
+
 #include "Generated.xcconfig"
+OTHER_LDFLAGS = $(inherited) -force_load "$(SRCROOT)/Engine/librecovery_core_ffi.a"

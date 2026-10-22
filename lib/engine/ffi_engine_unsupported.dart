@@ -60,6 +60,9 @@ class FfiRecoveryEngine implements RecoveryEngine {
   Future<List<RecoveryReceipt>> receipts() => _unsupported();
 
   @override
+  Future<DeviceInfo> addImageSource(String path) => _unsupported();
+
+  @override
   Future<int> freeBytes(Uri dir) => _unsupported();
 
   @override
