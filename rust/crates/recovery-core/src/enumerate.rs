@@ -542,7 +542,10 @@ mod windows {
     const FILE_SHARE_WRITE: u32 = 2;
     const OPEN_EXISTING: u32 = 3;
     const INVALID_HANDLE_VALUE: Handle = -1isize as Handle;
-    const IOCTL_DISK_GET_LENGTH_INFO: u32 = 0x0007_405C;
+    // GET_LENGTH_INFO needs FILE_READ_ACCESS on the handle; GET_DRIVE_GEOMETRY
+    // is FILE_ANY_ACCESS — the documented way to size a disk WITHOUT
+    // elevation (we open with zero desired access to never trigger UAC).
+    const IOCTL_DISK_GET_DRIVE_GEOMETRY: u32 = 0x0007_0000;
     const IOCTL_STORAGE_GET_DEVICE_NUMBER: u32 = 0x0002_D108;
     const ERROR_NO_MORE_ITEMS: u32 = 259;
 
@@ -823,8 +826,16 @@ mod windows {
             .map(|(_, n)| n);
 
         for e in disk_entries() {
-            let size = device_ioctl(&e.device_path, IOCTL_DISK_GET_LENGTH_INFO, 8)
-                .map(|b| u64::from_le_bytes(b[0..8].try_into().unwrap()))
+            // DISK_GEOMETRY { Cylinders i64, MediaType, TracksPerCylinder,
+            // SectorsPerTrack, BytesPerSector } = 24 bytes.
+            let size = device_ioctl(&e.device_path, IOCTL_DISK_GET_DRIVE_GEOMETRY, 24)
+                .map(|b| {
+                    let cylinders = i64::from_le_bytes(b[0..8].try_into().unwrap()).max(0) as u64;
+                    let tpc = u32::from_le_bytes(b[8..12].try_into().unwrap()) as u64;
+                    let spt = u32::from_le_bytes(b[12..16].try_into().unwrap()) as u64;
+                    let bps = u32::from_le_bytes(b[16..20].try_into().unwrap()) as u64;
+                    cylinders * tpc * spt * bps
+                })
                 .unwrap_or(0);
             if size == 0 {
                 continue;
