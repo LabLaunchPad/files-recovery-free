@@ -126,6 +126,8 @@ This repo root **is** the Flutter project. Extra directories:
 |------|----------|
 | `evidence/` | Verification artifacts — test logs, 12-shot interactive web walkthrough, live Linux desktop session, brand icons |
 | `docs/` | `Files_Recovery_FREE_Verification_Report.pdf` — the 10-page verification report |
+| `docs/PLATFORMS.md` | Per-OS playbooks (Windows/macOS/Linux/Android/iOS/Web), Phase 3 engine stack decisions, trust checklist |
+| `docs/phase2_gap_analysis.md` | REA gap analysis of the Rust engine phase |
 
 ## Legal notes
 
@@ -135,3 +137,5 @@ This repo root **is** the Flutter project. Extra directories:
   (Apple guideline 2.3.7), change `AppBrand.storeDisplayName` — one line.
 - Phase 1 engine is a **simulation** and says so in the UI (watermark);
   no real drive access until the Rust core lands.
+- Platform-specific tailoring decisions (privileges, packaging, filesystem
+  behavior, store policies) are tracked in [`docs/PLATFORMS.md`](docs/PLATFORMS.md).
