@@ -10,4 +10,7 @@
 // of a static archive would strip every object as "unused".
 
 #include "Generated.xcconfig"
-OTHER_LDFLAGS = $(inherited) -force_load "$(SRCROOT)/Engine/librecovery_core_ffi.a"
+OTHER_LDFLAGS = $(inherited) -force_load "$(SRCROOT)/Engine/librecovery_core_ffi.a" -Wl,-exported_symbols_list,"$(SRCROOT)/Engine/frf_exported_symbols.txt"
+// The export list is REQUIRED as well: Release builds dead-strip
+// unreferenced code even inside -force_load'd archives, and the Dart FFI
+// resolves every frf_* symbol only at RUNTIME (DynamicLibrary.process()).
