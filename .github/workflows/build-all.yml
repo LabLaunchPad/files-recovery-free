@@ -127,7 +127,7 @@ jobs:
         with:
           workspaces: rust
       - name: Real-device enumeration smoke (Windows runner disks)
-        run: cargo test -p recovery-core --test enumerate_test
+        run: cargo test --manifest-path rust/Cargo.toml -p recovery-core --test enumerate_test
         env:
           FRF_ENUM_STRICT: "1"
       - run: cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi
@@ -159,7 +159,7 @@ jobs:
         with:
           workspaces: rust
       - name: Real-device enumeration smoke (macOS runner disks)
-        run: cargo test -p recovery-core --test enumerate_test
+        run: cargo test --manifest-path rust/Cargo.toml -p recovery-core --test enumerate_test
         env:
           FRF_ENUM_STRICT: "1"
       - run: cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi
@@ -235,10 +235,12 @@ jobs:
           cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target aarch64-apple-ios
           cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target aarch64-apple-ios-sim
           cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target x86_64-apple-ios
-      - name: Verify static-lib slices (lipo info)
+      - name: Verify static-lib slices exist
         run: |
+          test -f rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a
+          test -f rust/target/aarch64-apple-ios-sim/release/librecovery_core_ffi.a
+          test -f rust/target/x86_64-apple-ios/release/librecovery_core_ffi.a
           file rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a
-          file rust/target/aarch64-apple-ios-sim/release/librecovery_core_ffi.a
       - name: Package engine xcframework (device + simulator slices)
         run: |
           xcodebuild -create-xcframework \

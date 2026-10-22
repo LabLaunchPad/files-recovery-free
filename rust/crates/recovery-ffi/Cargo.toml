@@ -10,7 +10,7 @@ recovery-core = { path = "../recovery-core" }
 
 [lib]
 name = "recovery_core_ffi"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib", "staticlib"]
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
