@@ -1,6 +1,7 @@
 // screens/choose_step.dart — Step 1: pick the source drive.
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
@@ -56,13 +57,30 @@ class ChooseStep extends StatelessWidget {
                         child: Padding(
                             padding: EdgeInsets.all(FrfSpacing.xxl),
                             child: CircularProgressIndicator()))
-                  else
+                  else ...[
                     ...s.devices.map((d) => _DeviceCard(
                           device: d,
                           selected: s.selectedDevice?.id == d.id,
                           onTap: () => s.selectDevice(d.id),
                           icon: _iconFor(d.kind),
                         )),
+                    if (!kIsWeb) ...[
+                      const SizedBox(height: FrfSpacing.s),
+                      GhostCta(
+                        s.importingImage
+                            ? S.chooseImportingImage
+                            : S.chooseImportImage,
+                        onPressed:
+                            (s.busy || s.importingImage)
+                                ? null
+                                : s.importDiskImage,
+                      ),
+                    ],
+                    if (s.selectedDevice?.isRawDevice ?? false) ...[
+                      const SizedBox(height: FrfSpacing.m),
+                      const _DeepScanBanner(),
+                    ],
+                  ],
                 ],
               ),
             ),
@@ -195,6 +213,52 @@ class _DeviceCard extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeepScanBanner extends StatelessWidget {
+  const _DeepScanBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: '${S.chooseDeepScanTitle}. ${S.chooseDeepScanBody}',
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(FrfSpacing.m),
+        decoration: BoxDecoration(
+          color: const Color(0xFF7A5205).withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(FrfRadius.control),
+          border: Border.all(
+              color: const Color(0xFF7A5205).withValues(alpha: 0.35)),
+        ),
+        child: const Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.travel_explore_rounded,
+                color: Color(0xFF7A5205), size: 18),
+            SizedBox(width: FrfSpacing.s),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(S.chooseDeepScanTitle,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF7A5205))),
+                    SizedBox(height: 2),
+                    Text(S.chooseDeepScanBody,
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: FrfColors.mutedOnLight)),
+                  ]),
+            ),
+          ],
         ),
       ),
     );

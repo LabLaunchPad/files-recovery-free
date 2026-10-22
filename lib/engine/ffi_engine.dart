@@ -351,6 +351,31 @@ class FfiRecoveryEngine implements RecoveryEngine {
     }
   }
 
+  /// Contract: register + return the new source's [DeviceInfo].
+  @override
+  Future<DeviceInfo> addImageSource(String path) async {
+    final idx = registerImage(path);
+    if (_sourceGet(idx, _src) != 0) {
+      throw EngineException.fromEngine(
+          'Could not read back the imported image.', _err());
+    }
+    final fs = _arrStr(_src.ref.fs, 16);
+    final mount = _arrStr(_src.ref.mount, 256);
+    final p = _arrStr(_src.ref.path, 512);
+    return DeviceInfo(
+      id: _arrStr(_src.ref.id, 64),
+      name: _arrStr(_src.ref.name, 128),
+      totalBytes: _src.ref.totalBytes,
+      kind: DeviceKind.values[_src.ref.kind
+          .clamp(0, DeviceKind.values.length - 1)],
+      mounted: _src.ref.mounted == 1,
+      isSystemDisk: _src.ref.isSystem == 1,
+      fileSystem: fs.isEmpty ? null : fs,
+      sourcePath: p.isEmpty ? null : p,
+      mountPoint: mount.isEmpty ? null : mount,
+    );
+  }
+
   // ------------------------------------------------------------- devices
 
   @override

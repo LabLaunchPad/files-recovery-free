@@ -20,7 +20,8 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use recovery_core::blocksource::{BlockSource, FileSource};
+use recovery_core::aligned::{AlignedSource, RAW_DEVICE_ALIGN};
+use recovery_core::blocksource::{is_raw_device_path, BlockSource, FileSource};
 use recovery_core::ops::{run_backup, run_recover, Receipt};
 use recovery_core::scanner::{run_scan, CarvedFile, Control, ScanConfig, ScanEvent, ScanOutput};
 use recovery_core::survey::spawn_survey;
@@ -280,7 +281,19 @@ pub struct FrfSurveySession {
     done: AtomicBool,
 }
 
-fn open_source(source_id: &str) -> Result<(FileSource, Source), ()> {
+/// Opens any readable source path as a trait object. Raw device nodes
+/// (memory-map discipline: aligned windows only) are wrapped in
+/// [AlignedSource]; regular files pass through untouched.
+fn open_block_source(path: &Path) -> Result<Box<dyn BlockSource>, std::io::Error> {
+    let fs = FileSource::open(path)?;
+    if fs.is_raw() || is_raw_device_path(path) {
+        Ok(Box::new(AlignedSource::new(fs, RAW_DEVICE_ALIGN)))
+    } else {
+        Ok(Box::new(fs))
+    }
+}
+
+fn open_source(source_id: &str) -> Result<(Box<dyn BlockSource>, Source), ()> {
     let st = engine().lock().unwrap();
     let Some(src) = st.sources.iter().find(|s| s.id == source_id) else {
         set_err(format!("unknown source id: {source_id}"));
@@ -305,8 +318,8 @@ fn open_source(source_id: &str) -> Result<(FileSource, Source), ()> {
         path: src.path.clone(),
         mount: src.mount.clone(),
     };
-    match FileSource::open(&path) {
-        Ok(fs) => Ok((fs, info)),
+    match open_block_source(&path) {
+        Ok(src) => Ok((src, info)),
         Err(e) => {
             set_err(format!("cannot open source: {e}"));
             Err(())
@@ -315,7 +328,7 @@ fn open_source(source_id: &str) -> Result<(FileSource, Source), ()> {
 }
 
 fn spawn_scan_session(
-    mut source: FileSource,
+    mut source: Box<dyn BlockSource>,
     source_meta: Source,
     source_path: PathBuf,
     mode: ScanMode,
@@ -630,7 +643,7 @@ pub unsafe extern "C" fn frf_scan_start(
         };
         (meta.path.clone().unwrap(), meta)
     };
-    let Ok(source) = FileSource::open(&path) else {
+    let Ok(source) = open_block_source(&path) else {
         set_err(format!("cannot open {}", path.display()));
         return std::ptr::null_mut();
     };
@@ -673,7 +686,7 @@ pub unsafe extern "C" fn frf_recover_start(
         };
         (items, path.clone())
     };
-    let Ok(source) = FileSource::open(&source_path) else {
+    let Ok(source) = open_block_source(&source_path) else {
         set_err(format!("cannot open {}", source_path.display()));
         return std::ptr::null_mut();
     };

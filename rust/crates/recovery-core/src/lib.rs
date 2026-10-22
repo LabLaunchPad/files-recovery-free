@@ -10,6 +10,7 @@
 //! Enum discriminants intentionally mirror the Dart `FileKind` / `FileState`
 //! orders so the FFI layer can pass integers straight through.
 
+pub mod aligned;
 pub mod blocksource;
 pub mod enumerate;
 pub mod ops;

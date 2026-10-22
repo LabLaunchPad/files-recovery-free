@@ -1,6 +1,6 @@
 [package]
 name = "recovery-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Signature-based file carving engine (Phase 2 core) for Files Recovery FREE"
 publish = false
@@ -12,5 +12,5 @@ memchr = "2.7"
 [lib]
 name = "recovery_core"
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -79,6 +79,16 @@ class ScriptedEngine implements RecoveryEngine {
   Future<List<RecoveryReceipt>> receipts() async => List.of(_receipts);
 
   @override
+  Future<DeviceInfo> addImageSource(String path) async => DeviceInfo(
+      id: 'img-user-1',
+      name: '${path.split(RegExp(r'[/\\]')).where((s) => s.isNotEmpty).last} (disk image)',
+      totalBytes: 8 * 1024 * 1024 * 1024,
+      kind: DeviceKind.diskImage,
+      mounted: true,
+      fileSystem: 'RAW',
+      sourcePath: path);
+
+  @override
   String get engineName => 'Scripted engine';
 
   @override

@@ -2,12 +2,14 @@ name: Build All Platforms
 
 # CI pipeline.
 # - Pull requests -> analyze + test gate + Phase 3 device-engine gate:
-#     * Rust workspace tests (incl. real-device enumeration smoke)
+#     * Rust workspace tests (incl. real-device enumeration smoke + the
+#       aligned raw-device IO suite)
 #     * engine cross-compiled for Android (arm64) via cargo-ndk
 #     * 16 KB page-size assert on the cross-compiled dylib (Play rule)
 # - Push to main / tag v* -> full bundle builds for
 #   Windows, macOS, Linux, Android (engine inside, APK-level 16 KB assert)
-#   and iOS (engine xcframework artifact).
+#   and iOS (engine STATICALLY LINKED into the Runner binary — nm symbol
+#   assert in CI — plus the engine xcframework artifact).
 #
 # Bundles attach to the auto-created GitHub Release `build-<run_number>`.
 # (actions/upload-artifact is rejected on private repos whose Actions
@@ -15,7 +17,7 @@ name: Build All Platforms
 #
 # Verified locally on 2026-10-22:
 #  - flutter analyze: 0 issues
-#  - flutter test: 95 pass (unit + widget + golden matrix + FFI engine)
+#  - flutter test: 104 pass (unit + widget + golden matrix + FFI engine)
 #  - flutter build web --release: OK
 #  - flutter build linux --release: OK
 # This workflow extends the same proven pipeline to platforms that need
@@ -247,10 +249,21 @@ jobs:
             -output recovery_core_ffi.xcframework
           ls -R recovery_core_ffi.xcframework | head -20
           zip -qry files-recovery-free-ios-engine.xcframework.zip recovery_core_ffi.xcframework
+      - name: Stage the device slice where the app links it
+        run: |
+          mkdir -p ios/Engine
+          cp rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a \
+             ios/Engine/librecovery_core_ffi.a
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
       - run: flutter build ios --release --no-codesign
+      - name: Assert the engine is linked INTO the Runner binary
+        run: |
+          test -f build/ios/iphoneos/Runner.app/Runner
+          nm build/ios/iphoneos/Runner.app/Runner | grep -q "_frf_version" \
+            || { echo "engine NOT linked into Runner"; exit 1; }
+          echo "engine symbols linked into Runner: $(nm build/ios/iphoneos/Runner.app/Runner | grep -c '_frf_')"
       - name: Zip bundle
         run: cd build/ios/iphoneos && zip -qry "$GITHUB_WORKSPACE/files-recovery-free-ios-unsigned.zip" Runner.app
       - name: Attach to CI release

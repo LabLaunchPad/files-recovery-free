@@ -26,6 +26,9 @@ class SimulatedEngine implements RecoveryEngine {
   List<RecoveredFile> _catalog = const [];
   List<RecoveryReceipt> _lastReceipts = const [];
 
+  /// Disk images imported through the UI in this session.
+  final List<DeviceInfo> _userImages = [];
+
   // ---------------------------------------------------------------- devices
   @override
   Future<List<DeviceInfo>> listDevices() async {
@@ -71,7 +74,28 @@ class SimulatedEngine implements RecoveryEngine {
           isSystemDisk: true,
           fileSystem: 'APFS',
           mountPoint: '/'),
-    ];
+    ].followedBy(_userImages).toList();
+  }
+
+  /// Contract: an imported image joins the device list deterministically.
+  @override
+  Future<DeviceInfo> addImageSource(String path) async {
+    await _wait(const Duration(milliseconds: 120));
+    if (_userImages.any((d) => d.sourcePath == path)) {
+      return _userImages.firstWhere((d) => d.sourcePath == path);
+    }
+    final name = path.split(RegExp(r'[/\\]')).where((s) => s.isNotEmpty).last;
+    final device = DeviceInfo(
+      id: 'img-user-${_userImages.length + 1}',
+      name: '$name (disk image)',
+      totalBytes: 8 * 1024 * 1024 * 1024,
+      kind: DeviceKind.diskImage,
+      mounted: true,
+      fileSystem: 'RAW',
+      sourcePath: path,
+    );
+    _userImages.add(device);
+    return device;
   }
 
   // ----------------------------------------------------------------- survey
