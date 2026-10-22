@@ -42,6 +42,8 @@ final class FrfSourceInfo extends Struct {
   external Array<Uint8> fs;
   @Array(512)
   external Array<Uint8> path;
+  @Array(256)
+  external Array<Uint8> mount;
 }
 
 final class FrfSurvey extends Struct {
@@ -148,6 +150,8 @@ typedef _ReceiptCountC = Int32 Function();
 typedef _ReceiptCountD = int Function();
 typedef _ReceiptGetC = Int32 Function(Int32, Pointer<FrfReceipt>);
 typedef _ReceiptGetD = int Function(int, Pointer<FrfReceipt>);
+typedef _FreeBytesC = Uint64 Function(Pointer<Uint8>);
+typedef _FreeBytesD = int Function(Pointer<Uint8>);
 
 final class FrfSurveySession extends Opaque {}
 
@@ -194,6 +198,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
         .lookupFunction<_ReceiptCountC, _ReceiptCountD>('frf_receipt_count');
     _receiptGet =
         _lib.lookupFunction<_ReceiptGetC, _ReceiptGetD>('frf_receipt_get');
+    _freeBytes =
+        _lib.lookupFunction<_FreeBytesC, _FreeBytesD>('frf_free_bytes');
   }
 
   final DynamicLibrary _lib;
@@ -220,6 +226,7 @@ class FfiRecoveryEngine implements RecoveryEngine {
   late final _BrowseGetD _browseGet;
   late final _ReceiptCountD _receiptCount;
   late final _ReceiptGetD _receiptGet;
+  late final _FreeBytesD _freeBytes;
 
   Pointer<FrfEvent>? _eventBuf;
   Pointer<FrfSourceInfo>? _srcBuf;
@@ -237,21 +244,37 @@ class FfiRecoveryEngine implements RecoveryEngine {
     final candidates = <String>[];
     final env = Platform.environment['FRF_DYLIB_PATH'];
     if (env != null && env.isNotEmpty) candidates.add(env);
-    final exeDir = File(Platform.resolvedExecutable).parent.path;
     final os = Platform.operatingSystem;
+    if (os == 'android') {
+      // Phase 3: the engine rides inside the APK as jniLibs; cargo-ndk
+      // builds it per ABI and the 16 KB page-size CI assert guarantees
+      // Play-compliant load segment alignment.
+      return _open(() => DynamicLibrary.open('librecovery_core_ffi.so'));
+    }
+    if (os == 'ios') {
+      // Static-linked engine slice (xcframework) — symbols live in the
+      // main executable.
+      return _open(() => DynamicLibrary.process());
+    }
     if (names.containsKey(os)) {
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
       candidates.add('$exeDir/${names[os]}');
       candidates.add(names[os]!);
     }
     for (final c in candidates) {
-      try {
-        final lib = DynamicLibrary.open(c);
-        return FfiRecoveryEngine._(lib, _readVersion(lib));
-      } catch (_) {
-        // try the next candidate
-      }
+      final eng = _open(() => DynamicLibrary.open(c));
+      if (eng != null) return eng;
     }
     return null;
+  }
+
+  static FfiRecoveryEngine? _open(DynamicLibrary Function() loader) {
+    try {
+      final lib = loader();
+      return FfiRecoveryEngine._(lib, _readVersion(lib));
+    } catch (_) {
+      return null;
+    }
   }
 
   static String _readVersion(DynamicLibrary lib) {
@@ -338,6 +361,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
     for (var i = 0; i < n; i++) {
       if (_sourceGet(i, _src) != 0) continue;
       final fs = _arrStr(_src.ref.fs, 16);
+      final mount = _arrStr(_src.ref.mount, 256);
+      final path = _arrStr(_src.ref.path, 512);
       devices.add(DeviceInfo(
         id: _arrStr(_src.ref.id, 64),
         name: _arrStr(_src.ref.name, 128),
@@ -346,9 +371,25 @@ class FfiRecoveryEngine implements RecoveryEngine {
         mounted: _src.ref.mounted == 1,
         isSystemDisk: _src.ref.isSystem == 1,
         fileSystem: fs.isEmpty ? null : fs,
+        sourcePath: path.isEmpty ? null : path,
+        mountPoint: mount.isEmpty ? null : mount,
       ));
     }
     return devices;
+  }
+
+  /// Free bytes via the engine's frf_free_bytes (statvfs on unix,
+  /// GetDiskFreeSpaceExW on Windows). 0 = unknown → callers warn, not block.
+  @override
+  Future<int> freeBytes(Uri dir) async {
+    final p = _cstr(dir.toFilePath());
+    try {
+      return _freeBytes(p);
+    } catch (_) {
+      return 0;
+    } finally {
+      _freeC(p);
+    }
   }
 
   // -------------------------------------------------------------- survey

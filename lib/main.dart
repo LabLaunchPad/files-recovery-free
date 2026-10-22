@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'app_brand.dart';
 import 'design/tokens.dart';
-import 'engine/ffi_engine.dart';
+import 'engine/ffi_entry.dart';
 import 'engine/recovery_engine.dart';
 import 'engine/simulated_engine.dart';
 import 'screens/wizard_screen.dart';

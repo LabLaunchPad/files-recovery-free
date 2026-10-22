@@ -91,7 +91,7 @@ class LookStep extends StatelessWidget {
             else
               PrimaryCta(S.lookContinue,
                   onPressed:
-                      s.selectedCount == 0 ? null : s.startRecovery),
+                      s.selectedCount == 0 ? null : s.openRecoverConfigure),
           ],
         ),
       ],

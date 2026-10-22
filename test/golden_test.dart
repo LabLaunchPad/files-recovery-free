@@ -23,6 +23,9 @@ class HeldScriptEngine implements RecoveryEngine {
   List<RecoveryReceipt> _receipts = const [];
 
   @override
+  Future<int> freeBytes(Uri dir) async => 8 * 1024 * 1024 * 1024;
+
+  @override
   Future<List<DeviceInfo>> listDevices() async => const [
         DeviceInfo(
             id: 'd1',
@@ -191,7 +194,8 @@ Future<void> _pumpViewport(WidgetTester tester, Size size) async {
 
 Future<RecoverySession> _pumpChoose(WidgetTester tester, Size size) async {
   await _pumpViewport(tester, size);
-  final s = RecoverySession(engine: HeldScriptEngine());
+  final s = RecoverySession(engine: HeldScriptEngine())
+    ..destinationProbeEnabled = false;
   await tester.pumpWidget(_wrap(FilesRecoveryFreeApp(session: s), size));
   await tester.runAsync(() => s.refreshDevices());
   await tester.pump();
@@ -233,8 +237,10 @@ Future<RecoverySession> _pumpStep(
   await tester.pump(const Duration(milliseconds: 200));
   if (target == WizardStep.look) return s;
 
-  // Recover (configure): selection of 7 files is under the free cap.
-  s.startRecovery();
+  // Recover (configure): destination card + options, selection under the
+  // free cap. The engine stays idle — the Start button is what writes.
+  s.busy = false; // the held scan stream never finished; bypass like Look
+  s.openRecoverConfigure();
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 200));
   return s;

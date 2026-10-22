@@ -86,7 +86,7 @@ fn full_pipeline_survey_scan_recover_via_c_abi() {
 
     let mut info = FrfSourceInfo {
         id: [0; 64], name: [0; 128], total_bytes: 0, kind: 0, mounted: 0, is_system: 0,
-        fs: [0; 16], path: [0; 512],
+        fs: [0; 16], path: [0; 512], mount: [0; 256],
     };
     assert_eq!(unsafe { frf_source_get(idx, &mut info) }, 0);
     let sid = cbytes(&info.id);
@@ -163,7 +163,7 @@ fn full_pipeline_survey_scan_recover_via_c_abi() {
     let bidx = unsafe { frf_source_add_image(CString::new(big.to_str().unwrap()).unwrap().as_ptr()) };
     assert!(bidx >= 0);
     unsafe { frf_source_refresh() };
-    let mut binfo = FrfSourceInfo { id: [0; 64], name: [0; 128], total_bytes: 0, kind: 0, mounted: 0, is_system: 0, fs: [0; 16], path: [0; 512] };
+    let mut binfo = FrfSourceInfo { id: [0; 64], name: [0; 128], total_bytes: 0, kind: 0, mounted: 0, is_system: 0, fs: [0; 16], path: [0; 512], mount: [0; 256] };
     assert_eq!(unsafe { frf_source_get(bidx, &mut binfo) }, 0);
     let bsid = CString::new(cbytes(&binfo.id)).unwrap();
 
@@ -203,7 +203,7 @@ fn cancel_yields_cancelled_event() {
     let idx = unsafe { frf_source_add_image(CString::new(img.to_str().unwrap()).unwrap().as_ptr()) };
     assert!(idx >= 0);
     unsafe { frf_source_refresh() };
-    let mut info = FrfSourceInfo { id: [0; 64], name: [0; 128], total_bytes: 0, kind: 0, mounted: 0, is_system: 0, fs: [0; 16], path: [0; 512] };
+    let mut info = FrfSourceInfo { id: [0; 64], name: [0; 128], total_bytes: 0, kind: 0, mounted: 0, is_system: 0, fs: [0; 16], path: [0; 512], mount: [0; 256] };
     unsafe { frf_source_get(idx, &mut info) };
     let sid = CString::new(cbytes(&info.id)).unwrap();
 
@@ -222,6 +222,32 @@ fn unknown_source_is_rejected_cleanly() {
     let s = unsafe { frf_scan_start(CString::new("nope").unwrap().as_ptr(), 0) };
     assert!(s.is_null());
     assert!(last_error().contains("unknown source"));
+}
+
+
+#[test]
+fn source_refresh_lists_real_devices_or_images() {
+    let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let n = unsafe { frf_source_refresh() };
+    assert!(n >= 0);
+    // Every exposed source must carry a readable path + positive size.
+    for i in 0..n {
+        let mut info = FrfSourceInfo { id: [0; 64], name: [0; 128], total_bytes: 0, kind: 0, mounted: 0, is_system: 0, fs: [0; 16], path: [0; 512], mount: [0; 256] };
+        assert_eq!(unsafe { frf_source_get(i, &mut info) }, 0, "source {i}");
+        assert!(info.total_bytes > 0, "source {i} size");
+        assert!(!info.path.is_empty(), "source {i} path");
+    }
+}
+
+#[test]
+fn free_bytes_reports_a_real_volume() {
+    let dir = temp_dir("freebytes");
+    let c = CString::new(dir.to_str().unwrap()).unwrap();
+    let n = unsafe { frf_free_bytes(c.as_ptr()) };
+    assert!(n > 0, "expected free bytes on a real volume, got {n}");
+    let zero = unsafe { frf_free_bytes(std::ptr::null()) };
+    assert_eq!(zero, 0, "null path must report unknown (0)");
+    fs::remove_dir_all(&dir).ok();
 }
 
 #[allow(dead_code)]

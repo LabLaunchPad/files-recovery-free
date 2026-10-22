@@ -27,6 +27,13 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Phase 3: the Rust carving engine rides in the APK per ABI
+        // (cargo-ndk output copied to src/main/jniLibs by CI). Restrict the
+        // fat APK to the ABIs we ship engine libraries for.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -34,6 +41,16 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+
+    packaging {
+        // 16 KB page-size compliance (Play requirement): native libraries
+        // must be stored UNcompressed and page-aligned so the loader can
+        // mmap them directly on 16 KB page devices. Legacy (compressed,
+        // unaligned) packaging would defeat the whole 16 KB assert.
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
 }

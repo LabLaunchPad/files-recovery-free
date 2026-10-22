@@ -38,7 +38,8 @@ class SimulatedEngine implements RecoveryEngine {
           totalBytes: 32 * 1024 * 1024 * 1024,
           kind: DeviceKind.sdCard,
           mounted: true,
-          fileSystem: 'FAT32'),
+          fileSystem: 'FAT32',
+          mountPoint: '/Volumes/SDHC'),
       DeviceInfo(
           id: 'usb1',
           name: 'Cruzer Blade (16 GB)',
@@ -52,7 +53,8 @@ class SimulatedEngine implements RecoveryEngine {
           totalBytes: 2 * 1024 * 1024 * 1024 * 1024,
           kind: DeviceKind.externalDisk,
           mounted: true,
-          fileSystem: 'NTFS'),
+          fileSystem: 'NTFS',
+          mountPoint: '/media/user/BackupPlus'),
       DeviceInfo(
           id: 'img1',
           name: 'card.img (disk image)',
@@ -67,7 +69,8 @@ class SimulatedEngine implements RecoveryEngine {
           kind: DeviceKind.internalDisk,
           mounted: true,
           isSystemDisk: true,
-          fileSystem: 'APFS'),
+          fileSystem: 'APFS',
+          mountPoint: '/'),
     ];
   }
 
@@ -193,6 +196,11 @@ class SimulatedEngine implements RecoveryEngine {
 
   @override
   bool get isDemo => true;
+
+  /// Simulated free space: a deterministic, healthy 64 GB so destination
+  /// checks behave like a real volume in demos/tests.
+  @override
+  Future<int> freeBytes(Uri dir) async => 64 * 1024 * 1024 * 1024;
 
   Stream<EngineProgress> _run(String op, Stream<EngineProgress> inner) async* {
     if (_busy) {

@@ -61,6 +61,8 @@ class S {
       'is never touched.';
   static const backupDestinationLabel = 'Safety copy destination';
   static const backupPick = 'Choose folder…';
+  static const backupOnSource =
+      'Not on the drive you are backing up — pick a different disk.';
   static const backupDo = 'Back up now';
   static const backupSkip = 'Skip — scan the original';
   static const backupSkipWarn =
@@ -95,6 +97,17 @@ class S {
   // Recover step
   static const recoverTitle = 'Recover files';
   static const recoverDestination = 'Destination';
+  static const recoverPickFolder = 'Choose folder…';
+  static const recoverDestDefault = 'Default (temporary folder)';
+  static const recoverDestWritable = 'Writable';
+  static const recoverDestNotWritable = 'Not writable';
+  static const recoverDestFree = 'free';
+  static const recoverDestSpaceUnknown = 'Free space unknown';
+  static const recoverDestOnSource = 'On the source drive';
+  static const recoverDestChecking = 'Checking folder…';
+  static const recoverDestWeb =
+      'Browser builds hand files to your downloads — folder picking '
+      'arrives with the OPFS edition.';
   static const recoverKeepFolders = 'Keep folder structure';
   static const recoverByDate = 'Sort into folders by capture date';
   static const recoverStart = 'Start recovery';

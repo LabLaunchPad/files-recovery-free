@@ -1,6 +1,7 @@
 // screens/recover_step.dart — Step 6: write files out + verification receipt.
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
@@ -43,10 +44,10 @@ class RecoverStep extends StatelessWidget {
       ]);
     }
     if (s.recoverPhase == RecoverPhase.running) return _running(s);
-    return _configure(s);
+    return _configure(context, s);
   }
 
-  Widget _configure(RecoverySession s) {
+  Widget _configure(BuildContext context, RecoverySession s) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -58,36 +59,123 @@ class RecoverStep extends StatelessWidget {
             title: S.recoverKeepFolders, value: true, onChanged: null),
         const _OptionTile(title: S.recoverByDate, value: false, onChanged: null),
         const SizedBox(height: FrfSpacing.l),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(FrfSpacing.l),
-          decoration: BoxDecoration(
-            color: FrfColors.surface,
-            borderRadius: BorderRadius.circular(FrfRadius.card),
-            border: Border.all(color: FrfColors.hairline),
-          ),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(S.recoverDestination,
-                  style: TextStyle(
-                      fontSize: FrfType.caption,
-                      fontWeight: FontWeight.w700,
-                      color: FrfColors.mutedOnLight)),
-              SizedBox(height: FrfSpacing.s),
-              Row(children: [
-                Icon(Icons.folder_open_rounded,
-                    color: FrfColors.brandPrimary),
-                SizedBox(width: FrfSpacing.s),
-                Text('/tmp/files-recovery-free/output',
-                    style: TextStyle(fontSize: 13.5)),
-              ]),
-            ],
-          ),
-        ),
+        _destinationCard(context, s),
       ],
     );
   }
+
+  Widget _destinationCard(BuildContext context, RecoverySession s) {
+    if (kIsWeb) {
+      return _cardShell(const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(S.recoverDestination,
+              style: TextStyle(
+                  fontSize: FrfType.caption,
+                  fontWeight: FontWeight.w700,
+                  color: FrfColors.mutedOnLight)),
+          SizedBox(height: FrfSpacing.s),
+          Icon(Icons.cloud_download_outlined, color: FrfColors.brandPrimary),
+          SizedBox(width: FrfSpacing.s),
+          Text(S.recoverDestWeb, style: TextStyle(fontSize: 13.5)),
+        ],
+      ));
+    }
+    final check = s.destinationCheck;
+    final dir = s.effectiveDestination;
+    return _cardShell(Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(S.recoverDestination,
+            style: TextStyle(
+                fontSize: FrfType.caption,
+                fontWeight: FontWeight.w700,
+                color: FrfColors.mutedOnLight)),
+        const SizedBox(height: FrfSpacing.s),
+        Row(children: [
+          const Icon(Icons.folder_open_rounded, color: FrfColors.brandPrimary),
+          const SizedBox(width: FrfSpacing.s),
+          Expanded(
+            child: Text(
+                dir + (s.destinationChosen ? '' : '  ·  ${S.recoverDestDefault}'),
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13.5)),
+          ),
+          const SizedBox(width: FrfSpacing.s),
+          GhostCta(S.recoverPickFolder, onPressed: s.busy ? null : s.chooseDestination),
+        ]),
+        const SizedBox(height: FrfSpacing.s),
+        if (s.destinationChecking)
+          const Row(children: [
+            SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2)),
+            SizedBox(width: FrfSpacing.s),
+            Text(S.recoverDestChecking, style: TextStyle(fontSize: 12.5)),
+          ])
+        else if (check != null) ...[
+          Wrap(spacing: FrfSpacing.s, runSpacing: FrfSpacing.s, children: [
+            if (check.onSourceDrive)
+              _chip(S.recoverDestOnSource, bad: true)
+            else if (check.probeRan)
+              _chip(check.writable ? S.recoverDestWritable : S.recoverDestNotWritable,
+                  bad: !check.writable, good: check.writable),
+            if (check.freeBytes > 0)
+              _chip(
+                  '${humanBytes(check.freeBytes)} ${S.recoverDestFree}',
+                  good: check.freeBytes >= s.selectedBytes),
+            if (check.freeBytes == 0) _chip(S.recoverDestSpaceUnknown),
+          ]),
+          for (final w in check.warnings)
+            Padding(
+              padding: const EdgeInsets.only(top: FrfSpacing.s),
+              child: Row(children: [
+                const Icon(Icons.info_outline_rounded,
+                    size: 15, color: FrfColors.warn),
+                const SizedBox(width: FrfSpacing.s),
+                Expanded(
+                    child: Text(w,
+                        style: const TextStyle(fontSize: 12.5))),
+              ]),
+            ),
+        ],
+      ],
+    ));
+  }
+
+  Widget _cardShell(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(FrfSpacing.l),
+        decoration: BoxDecoration(
+          color: FrfColors.surface,
+          borderRadius: BorderRadius.circular(FrfRadius.card),
+          border: Border.all(color: FrfColors.hairline),
+        ),
+        child: child,
+      );
+
+  Widget _chip(String label, {bool bad = false, bool good = false}) => Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: FrfSpacing.s, vertical: 3),
+        decoration: BoxDecoration(
+          color: bad
+              ? FrfColors.bad.withValues(alpha: 0.1)
+              : good
+                  ? FrfColors.ok.withValues(alpha: 0.1)
+                  : FrfColors.hairline.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(FrfRadius.control),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: bad
+                    ? FrfColors.bad
+                    : good
+                        ? FrfColors.ok
+                        : FrfColors.mutedOnLight)),
+      );
 
   Widget _running(RecoverySession s) {
     return Column(
@@ -198,7 +286,7 @@ class RecoverStep extends StatelessWidget {
           PrimaryCta(S.recoverStart,
               onPressed: s.selectedCount == 0 || s.busy
                   ? null
-                  : s.startRecovery),
+                  : () => s.startRecovery()),
         ];
         break;
     }

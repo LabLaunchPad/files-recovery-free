@@ -77,13 +77,20 @@ Found during the audit + FFI bring-up (each one is now covered by a test):
 
 ## 3. Remaining gaps (the "other needed things" — Phase 3 backlog)
 
-1. **Device enumeration beyond Linux** — `/sys/block` + root-disk lock via
-   `/proc/cmdline` works on Linux; macOS (`diskutil`/DiskArbitration) and
-   Windows (SetupAPI) need platform channels; Android needs Storage Access
-   Framework + USB host; iOS cannot access raw devices (App Store policy).
-2. **Cross-compiling the engine** — Android (`aarch64-linux-android` +
-   JNI loader) and iOS (`aarch64-apple-ios` XCFramework) are not built yet;
-   those bundles ship with the simulated engine (FFI off by default).
+1. **Device enumeration beyond Linux** — **LANDED (Phase 3, PR device-enumeration)**:
+   `recovery_core::enumerate` walks IOKit `IOMedia` on macOS, SetupAPI +
+   `IOCTL_DISK_GET_LENGTH_INFO` (zero-access handles, no elevation) on
+   Windows, and sysfs + mountinfo on Linux; partitions, mounts, filesystems
+   and the system-disk lock come out of one shared struct. Android mounts
+   surface via the same Linux parser (`/proc/self/mountinfo`); iOS remains
+   companion-only by App Store policy.
+2. **Cross-compiling the engine** — **LANDED (Phase 3, PR device-enumeration)**:
+   cargo-ndk builds `arm64-v8a`/`armeabi-v7a`/`x86_64` into the APK
+   (`jniLibs`) with `-Wl,-z,max-page-size=16384`; CI asserts 16 KB LOAD
+   alignment on the APK (Play 2027-02-01 rule). iOS ships an
+   `librecovery_core_ffi.xcframework` (device + simulator slices) as a
+   release asset; the Dart loader handles Android/iOS (`DynamicLibrary.open`
+   / `process`).
 3. **EXIF capture dates** — `capturedAt` is 0 (unknown); JPEG EXIF parsing
    would enable real `byCaptureDate` grouping.
 4. **License verification** — regex check is a placeholder; the benchmark
@@ -103,8 +110,9 @@ Found during the audit + FFI bring-up (each one is now covered by a test):
 
 | gate | result |
 |------|--------|
-| `cargo test --workspace` (core + C ABI) | **8/8 pass** (incl. byte-identical recover, cancel, survey, ABI pipeline) |
+| `cargo test --workspace` (core + C ABI + enumeration) | **14/14 pass** (incl. live sysfs enumeration, frf_free_bytes, byte-identical recover, cancel) |
+| cross-target compile checks | **4/4 pass** (x86_64/aarch64-apple-darwin, x86_64-pc-windows-msvc, aarch64-apple-ios) |
+| 16 KB page-size gate | positive + negative control verified (4096 → FAIL, flagged → PASS) |
 | `flutter analyze` | **0 issues** |
-| `flutter test` with the real dylib loaded | **53/53 pass** (49 existing incl. 26 goldens + 4 new FFI tests) |
-| golden matrix | unchanged (engine default stays simulated; UI untouched) |
+| `flutter test` with the real dylib loaded | **95 pass / 1 skip** (destination flow + picker + FFI free-bytes/enumeration + 26 regenerated goldens) |
 | CI | cargo + dylib build added to the gate; engine bundled into linux/windows/macos artifacts |

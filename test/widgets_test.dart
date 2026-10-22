@@ -18,6 +18,9 @@ import 'package:files_recovery_free/widgets/core.dart';
 
 class _InstantEngine implements RecoveryEngine {
   @override
+  Future<int> freeBytes(Uri dir) async => 8 * 1024 * 1024 * 1024;
+
+  @override
   Future<List<DeviceInfo>> listDevices() async => const [
         DeviceInfo(
             id: 'd1',
@@ -114,7 +117,8 @@ Future<RecoverySession> pumpApp(WidgetTester tester,
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
-  final s = RecoverySession(engine: _InstantEngine());
+  final s = RecoverySession(engine: _InstantEngine())
+    ..destinationProbeEnabled = false;
   await tester.pumpWidget(FilesRecoveryFreeApp(session: s));
   await tester.pumpAndSettle();
   return s;
@@ -178,11 +182,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(s.selectedCount, 2);
 
-    // Step 6: the instant engine completes the run within pumpAndSettle,
-    // so the wizard should already show the verified receipt screen.
+    // Step 6: "Recover selection" opens the configure screen with the
+    // destination card; Start runs the write (instant engine completes it
+    // within pumpAndSettle) and lands on the verified receipt screen.
     await tester.tap(find.text(S.lookContinue));
     await tester.pumpAndSettle();
     expect(s.step, WizardStep.recover);
+    expect(s.recoverPhase, RecoverPhase.configure);
+    expect(find.text(S.recoverDestination), findsOneWidget);
+    expect(find.text(S.recoverPickFolder), findsOneWidget);
+
+    await tester.tap(find.text(S.recoverStart));
+    await tester.pumpAndSettle();
     expect(s.recoverPhase, RecoverPhase.done,
         reason: 'instant engine finishes before the next settled frame');
     expect(find.text(S.recoverDoneTitle), findsOneWidget);
@@ -234,5 +245,42 @@ void main() {
         ViewportClass.phoneLandscape);
     expect(viewportClassFor(const Size(390, 844)),
         ViewportClass.phonePortrait);
+  });
+
+  testWidgets('recover step: folder picker binds a real destination with chips',
+      (tester) async {
+    final s = await pumpApp(tester);
+    // walk to the recover configure screen
+    await tester.tap(find.text('Instant (1 GB)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(S.chooseContinue));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(S.surveyCta));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(S.backupSkip));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('DSC_001.JPG').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(S.lookContinue));
+    await tester.pumpAndSettle();
+
+    expect(s.recoverPhase, RecoverPhase.configure);
+    // default destination is shown with its label
+    expect(find.textContaining(S.recoverDestDefault), findsOneWidget);
+    expect(s.destinationChosen, isFalse);
+
+    // fake picker: neutral path outside the source device
+    const picked = '/tmp/frf_widget_pick';
+    s.pickDirectory = () async => picked;
+
+    await tester.tap(find.text(S.recoverPickFolder));
+    await tester.pumpAndSettle();
+    expect(s.destinationChosen, isTrue);
+    expect(s.destinationPath, picked);
+    expect(find.textContaining(picked), findsOneWidget);
+    // free-space chip from the engine (8 GB fake)
+    expect(find.textContaining('GB ${S.recoverDestFree}'), findsOneWidget);
+    // writable chip shows only when the probe ran (disabled in tests)
+    expect(find.text(S.recoverDestWritable), findsNothing);
   });
 }

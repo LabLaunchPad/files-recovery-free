@@ -18,14 +18,18 @@
    run. Permission requests never gate the free experience behind
    alarming OS prompts.
 
-| OS | Declared permissions | Raw-volume access | Where enforced |
-|----|----------------------|-------------------|----------------|
-| Windows | none (asInvoker) | elevated helper, separate process | `windows/runner/runner.exe.manifest` |
-| macOS | none in Release | Full Disk Access (user grant) | `macos/Runner/Release.entitlements` |
-| Linux | none | `disk` group membership or image mode | docs + error hints (`lib/engine/error_codes.dart`) |
-| Android | none | not offered (Play policy) | `android/app/src/main/AndroidManifest.xml` |
-| iOS | none | impossible by design (Guideline 2.5.2) | companion edition only |
-| Web | none | none — OPFS/user-picked files only | PWA manifest + 2 GB demo cap |
+| OS | Declared permissions | Raw-volume access | Device enumeration (Phase 3) | Where enforced |
+|----|----------------------|-------------------|------------------------------|----------------|
+| Windows | none (asInvoker) | elevated helper, separate process | SetupAPI + IOCTLs, **zero-desired-access handles — no UAC** | `windows/runner/runner.exe.manifest`, `recovery-core/src/enumerate.rs` |
+| macOS | none in Release | Full Disk Access (user grant) | IOKit `IOMedia` walk + `getfsstat` — no TCC prompt for listing | `macos/Runner/Release.entitlements` |
+| Linux | none | `disk` group membership or image mode | sysfs + `/proc/self/mountinfo` (the udev/udisks2 substrate) | docs + error hints (`lib/engine/error_codes.dart`) |
+| Android | none | not offered (Play policy) | `/proc/self/mountinfo` volumes; SAF picks are permission-free | `android/app/src/main/AndroidManifest.xml` |
+| iOS | none | impossible by design (Guideline 2.5.2) | none — companion edition only | companion edition only |
+| Web | none | none — OPFS/user-picked files only | browser downloads hand-off; folder picker with the OPFS edition | PWA manifest + 2 GB demo cap |
+
+Enumeration is read-only metadata (names, sizes, mounts) and never
+requires elevation on any platform — scanning a discovered device is the
+separate, permission-checked act (FDA / disk group / elevated helper).
 
 ## Windows
 
@@ -51,7 +55,10 @@
 - Full Disk Access is requested **at first real scan** with a rationale
   screen, not at launch. If declined, image-mode scanning still works and
   the error-code map says so (`FRF_E_PERMISSION_DENIED` on macOS).
-- DiskArbitration (Phase 3) handles volume enumeration and mount events.
+- Volume enumeration (Phase 3) rides IOKit `IOMedia` — the same plane
+  DiskArbitration sits on — plus `getfsstat` for mount/filesystem facts.
+  DA remain the right tool for mount/unmount EVENTS when the UI adds them;
+  polling keeps this PR free of a CFRunLoop dependency.
 
 ## Linux
 
@@ -75,7 +82,9 @@
 - Optional root scan (if ever shipped) is a separate, clearly-labeled
   build — never the Play distribution.
 - Engine notes: cargo-ndk + NDK r28, and **16 KB page-size alignment is a
-  hard Play requirement from 2027-02-01** — CI asserts ELF LOAD alignment.
+  hard Play requirement from 2027-02-01** — every build is asserted:
+  linker flags in `rust/.cargo/config.toml`, `useLegacyPackaging = false`
+  in gradle, and `scripts/check_16kb_pagesize.py` over the shipped APK.
 
 ## iOS
 

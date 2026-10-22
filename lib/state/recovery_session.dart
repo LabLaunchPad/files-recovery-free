@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import '../app_brand.dart';
 import '../engine/recovery_engine.dart';
 import '../engine/simulated_engine.dart';
+import 'destination.dart';
 
 enum WizardStep { choose, survey, backup, scan, look, recover }
 
@@ -54,6 +55,72 @@ class RecoverySession extends ChangeNotifier {
   RecoverPhase recoverPhase = RecoverPhase.configure;
   final List<RecoveryReceipt> receipts = [];
   String? errorText;
+
+  // ------------------------------------------------------------- destination
+  /// Where recovered files are written. Null = the per-OS default still
+  /// applies; the Recover step always shows which one is in effect.
+  String? destinationPath;
+
+  /// True once the user explicitly picked a folder this session.
+  bool destinationChosen = false;
+
+  /// Latest evaluation of [effectiveDestination], refreshed on pick and
+  /// right before a recovery starts. Null = not evaluated yet.
+  DestinationCheck? destinationCheck;
+
+  /// True while the writability/space probe is in flight.
+  bool destinationChecking = false;
+
+  /// The folder picker (file_selector on real platforms; faked in tests).
+  DirectoryPicker pickDirectory = platformPickDirectory;
+
+  /// Writability-probe switch. Tests/CI set false to keep widget tests
+  /// deterministic (the probe does real file IO that fake async never
+  /// delivers). Real runs always probe.
+  bool destinationProbeEnabled = true;
+
+  /// Path in effect right now (explicit pick or per-OS default).
+  String get effectiveDestination => destinationPath ?? defaultDestinationRoot();
+
+  Uri get destinationUri => Uri.file(effectiveDestination);
+
+  /// Opens the native folder dialog; user-cancel keeps the previous state.
+  Future<void> chooseDestination() async {
+    final picked = await pickDirectory();
+    if (picked == null || picked.isEmpty) return;
+    await setDestination(picked);
+  }
+
+  /// Evaluates a candidate destination (probe + space + source guard).
+  Future<void> setDestination(String dir) async {
+    destinationPath = dir;
+    destinationChosen = true;
+    destinationChecking = true;
+    _safeNotify();
+    destinationCheck = await _evaluateDestination(dir);
+    destinationChecking = false;
+    _safeNotify();
+  }
+
+  Future<DestinationCheck> _evaluateDestination(String dir) async {
+    final (probeRan, writable) = destinationProbeEnabled
+        ? await DestinationSafety.probeWritable(dir)
+        : (false, false);
+    int free = 0;
+    try {
+      free = await engine.freeBytes(Uri.file(dir));
+    } catch (_) {
+      free = 0; // unknown → warn, never fabricate
+    }
+    return DestinationSafety.evaluate(
+      dir: dir,
+      source: selectedDevice,
+      neededBytes: selectedBytes,
+      freeBytes: free,
+      probeRan: probeRan,
+      writable: writable,
+    );
+  }
 
   /// Classified failure code for the last error (null when fine). Screens
   /// use it plus [errorHint] for OS-specific remediation guidance.
@@ -263,8 +330,30 @@ class RecoverySession extends ChangeNotifier {
   }
 
   // ------------------------------------------------------------- recover
-  void startRecovery() {
+  /// Look → Recover: open the CONFIGURE phase (destination card + options)
+  /// instead of jumping straight into writing. The Recover step's own
+  /// Start button then runs [startRecovery] with the safety net.
+  void openRecoverConfigure() {
     if (selectedFileIds.isEmpty || needsUpgradeForSelection) return;
+    _step = WizardStep.recover;
+    recoverPhase = RecoverPhase.configure;
+    errorText = null;
+    errorCode = null;
+    notifyListeners();
+    _refreshDestinationCheck();
+  }
+
+  /// Re-evaluates the destination in effect without changing the phase.
+  Future<void> _refreshDestinationCheck() async {
+    destinationChecking = true;
+    _safeNotify();
+    destinationCheck = await _evaluateDestination(effectiveDestination);
+    destinationChecking = false;
+    _safeNotify();
+  }
+
+  Future<void> startRecovery() async {
+    if (selectedFileIds.isEmpty || needsUpgradeForSelection || busy) return;
     recoverPhase = RecoverPhase.running;
     _step = WizardStep.recover;
     progressFraction = 0;
@@ -273,10 +362,26 @@ class RecoverySession extends ChangeNotifier {
     errorCode = null;
     receipts.clear();
     notifyListeners();
+
+    // Destination safety net: evaluate the folder in effect (also covers a
+    // folder whose files changed since the last check) and refuse to write
+    // when a blocker applies. Failures land as typed errors + UI hint.
+    final dir = effectiveDestination;
+    final check = await _evaluateDestination(dir);
+    destinationCheck = check;
+    if (!check.ok) {
+      _fail(check.blockers.first,
+          technical: 'destination: ${check.blockers.join(' | ')}',
+          code: check.freeBytes > 0 && check.freeBytes < selectedBytes
+              ? FrfErrorCode.destinationFull
+              : FrfErrorCode.destinationInvalid);
+      recoverPhase = RecoverPhase.configure;
+      return;
+    }
+
     _sub?.cancel();
     _sub = engine
-        .recover('session', selectedFileIds.toList(),
-            Uri.file('/tmp/files-recovery-free/output'),
+        .recover('session', selectedFileIds.toList(), Uri.file(dir),
             keepFolderStructure: true, byCaptureDate: false)
         .listen(_onRecoverEvent,
             onError: (Object e) => _fail(
@@ -353,7 +458,16 @@ class RecoverySession extends ChangeNotifier {
     recoverPhase = RecoverPhase.configure;
     receipts.clear();
     filter.clear();
+    _resetDestination();
     notifyListeners();
+  }
+
+  /// Destination resets with the wizard: a new session gets a fresh choice.
+  void _resetDestination() {
+    destinationPath = null;
+    destinationChosen = false;
+    destinationCheck = null;
+    destinationChecking = false;
   }
 
   // -------------------------------------------------------------- internal

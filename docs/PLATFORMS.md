@@ -32,7 +32,9 @@
 - **Remove `com.apple.security.app-sandbox` from `Release.entitlements`** — sandboxed builds cannot
   read raw volumes or arbitrary files; the Mac App Store is out of scope for this product [S11].
 - Request Full Disk Access at first real scan with a rationale screen; degrade gracefully if declined.
-- Adopt DiskArbitration for volume enumeration and mount events (closes the Phase 3 backlog item) [S13].
+- Volume enumeration **LANDED** via IOKit `IOMedia` + `getfsstat`
+  (`recovery-core/src/enumerate.rs`) — the plane DiskArbitration sits on;
+  DA callbacks stay queued for mount/unmount events [S13].
 - Distribution: hardened-runtime, notarized + stapled DMG; Sparkle 2 Ed25519 appcasts (same signature
   stack as future license keys); Homebrew cask; Setapp for Pro [S12][S15][S16].
 
@@ -40,7 +42,8 @@
 
 - ext4 undelete goes through the jbd2 journal (extundelete/ext4magic technique); XFS is carving-only;
   btrfs/ZFS: snapshot discovery first [S17][S18].
-- Block nodes are `root:disk 0660`; enumerate via udisks2/libudev; `disk`-group membership only for
+- Block nodes are `root:disk 0660`; enumeration reads sysfs + mountinfo
+  directly (the udev/udisks2 substrate, **LANDED**); `disk`-group membership only for
   raw scans. No privileged helper [S20].
 - **Flatpak has no block-device portal** (TestDisk/GParted are absent from Flathub) — ship deb, rpm
   and AppImage first; Flatpak only for image-file scan mode [S19].
@@ -52,8 +55,10 @@
   second mode = SAF folder scan; optional clearly-labeled root scan; PC-assisted deep scans via the
   desktop editions [S21][S55][S54].
 - Do not request `MANAGE_EXTERNAL_STORAGE`; Play Deceptive Behavior policy bans impossible claims [S23][S24].
-- Engine lands via cargo-ndk + NDK r28; **16 KB page-size alignment is a hard Play requirement —
-  from 2027-02-01 non-compliant updates are blocked**; assert LOAD alignment in CI [S22][S46].
+- Engine lands via cargo-ndk + NDK r28 — **LANDED** (3 ABIs inside the APK);
+  **16 KB page-size alignment is a hard Play requirement — from 2027-02-01
+  non-compliant updates are blocked**; linker flags + `useLegacyPackaging=false`
+  + APK-level LOAD-alignment assert **LANDED** in CI [S22][S46].
 
 ## iOS edition
 
@@ -82,6 +87,21 @@
   cargo-fuzz + proptest on parsers [S47][S48][S49].
 - Risks watched: crate stagnation (isolate parsers behind a trait), GPL contamination, 16 KB pages,
   iOS static-link slices, FFI backpressure (bounded ring buffer + coalesced events).
+
+## Phase 3 landed (PR device-enumeration)
+
+- **Real-device enumeration** on all desktop OSes (IOKit / SetupAPI /
+  sysfs), partitions + mounts + filesystem facts, system-disk lock, exposed
+  over the same `frf_source_*` ABI. Runner CI smokes enumerate REAL disks
+  on ubuntu/windows/macos jobs (`FRF_ENUM_STRICT=1`).
+- **Engine cross-compile**: Android arm64/v7a/x86_64 inside the APK
+  (cargo-ndk + jniLibs), iOS xcframework release asset (device + sim slices),
+  Dart loader handles both mobile OSes.
+- **16 KB page-size gate**: rustflags → gradle packaging → APK assert
+  (`scripts/check_16kb_pagesize.py`, selftested, positive+negative controls).
+- **Destination file-picker flow**: `file_selector` everywhere, per-OS
+  defaults, free-space via `frf_free_bytes` (statvfs/GetDiskFreeSpaceExW),
+  writability probe, never-recover-onto-the-source guard (PhotoRec rule).
 
 ## REA gap top items (see docs/phase2_gap_analysis.md for the engine-side list)
 

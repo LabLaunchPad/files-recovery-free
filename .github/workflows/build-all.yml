@@ -1,17 +1,21 @@
 name: Build All Platforms
 
 # CI pipeline.
-# - Pull requests -> analyze + test gate (fast feedback)
+# - Pull requests -> analyze + test gate + Phase 3 device-engine gate:
+#     * Rust workspace tests (incl. real-device enumeration smoke)
+#     * engine cross-compiled for Android (arm64) via cargo-ndk
+#     * 16 KB page-size assert on the cross-compiled dylib (Play rule)
 # - Push to main / tag v* -> full bundle builds for
-#   Windows, macOS, Linux, Android and iOS
+#   Windows, macOS, Linux, Android (engine inside, APK-level 16 KB assert)
+#   and iOS (engine xcframework artifact).
 #
 # Bundles attach to the auto-created GitHub Release `build-<run_number>`.
 # (actions/upload-artifact is rejected on private repos whose Actions
 #  storage quota is 0; Release asset storage is free and unlimited.)
 #
-# Verified locally on 2026-10-21:
+# Verified locally on 2026-10-22:
 #  - flutter analyze: 0 issues
-#  - flutter test: 50/50 (unit + widget + golden matrix)
+#  - flutter test: 95 pass (unit + widget + golden matrix + FFI engine)
 #  - flutter build web --release: OK
 #  - flutter build linux --release: OK
 # This workflow extends the same proven pipeline to platforms that need
@@ -34,18 +38,35 @@ permissions:
 
 jobs:
   test:
-    name: Analyze + Test (ubuntu)
+    name: Analyze + Test + device-engine gate (ubuntu)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-      - name: Rust tests (carving core + C ABI)
+      - name: Rust tests (carving core + C ABI + real-device enumeration)
         run: cargo test --manifest-path rust/Cargo.toml --workspace
+        env:
+          FRF_ENUM_STRICT: "1" # the runner exposes its own disks
       - name: Build engine dylib
         run: cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi
+      - name: Cross-compile the engine for Android (arm64)
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-ndk
+      - name: cargo-ndk build (arm64-v8a)
+        run: |
+          echo "NDK at: ${ANDROID_NDK_HOME:-not set}"
+          cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build --manifest-path rust/Cargo.toml --release -p recovery-ffi
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+      - name: 16 KB page-size assert (checker selftest + real dylib)
+        run: |
+          python3 scripts/check_16kb_pagesize.py --selftest
+          python3 scripts/check_16kb_pagesize.py android/app/src/main/jniLibs/arm64-v8a/librecovery_core_ffi.so
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -104,6 +125,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+      - name: Real-device enumeration smoke (Windows runner disks)
+        run: cargo test -p recovery-core --test enumerate_test
+        env:
+          FRF_ENUM_STRICT: "1"
       - run: cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi
       - uses: subosito/flutter-action@v2
         with:
@@ -132,6 +157,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
+      - name: Real-device enumeration smoke (macOS runner disks)
+        run: cargo test -p recovery-core --test enumerate_test
+        env:
+          FRF_ENUM_STRICT: "1"
       - run: cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi
       - uses: subosito/flutter-action@v2
         with:
@@ -151,7 +180,7 @@ jobs:
           files: files-recovery-free-macos.zip
 
   android:
-    name: Android APK
+    name: Android APK (engine inside, 16 KB asserted)
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name != 'pull_request'
@@ -161,10 +190,23 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - uses: baptiste0928/cargo-install@v3
+        with:
+          crate: cargo-ndk
+      - name: Cross-compile the engine (3 ABIs, 16 KB page-size flags)
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o android/app/src/main/jniLibs build --manifest-path rust/Cargo.toml --release -p recovery-ffi
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
       - run: flutter build apk --release
+      - name: 16 KB page-size assert on the shipped APK
+        run: python3 scripts/check_16kb_pagesize.py build/app/outputs/flutter-apk/app-release.apk
       - name: Stage APK
         run: mv build/app/outputs/flutter-apk/app-release.apk files-recovery-free-android.apk
       - name: Attach to CI release
@@ -174,12 +216,36 @@ jobs:
           files: files-recovery-free-android.apk
 
   ios:
-    name: iOS (unsigned build)
+    name: iOS (unsigned build + engine xcframework)
     runs-on: macos-latest
     needs: test
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Cross-compile the engine (device + simulator slices)
+        run: |
+          cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target aarch64-apple-ios
+          cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target aarch64-apple-ios-sim
+          cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target x86_64-apple-ios
+      - name: Verify static-lib slices (lipo info)
+        run: |
+          file rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a
+          file rust/target/aarch64-apple-ios-sim/release/librecovery_core_ffi.a
+      - name: Package engine xcframework (device + simulator slices)
+        run: |
+          xcodebuild -create-xcframework \
+            -library rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a \
+            -library rust/target/aarch64-apple-ios-sim/release/librecovery_core_ffi.a \
+            -library rust/target/x86_64-apple-ios/release/librecovery_core_ffi.a \
+            -output recovery_core_ffi.xcframework
+          ls -R recovery_core_ffi.xcframework | head -20
+          zip -qry files-recovery-free-ios-engine.xcframework.zip recovery_core_ffi.xcframework
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -190,4 +256,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          files: files-recovery-free-ios-unsigned.zip
+          files: |
+            files-recovery-free-ios-unsigned.zip
+            files-recovery-free-ios-engine.xcframework.zip

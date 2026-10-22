@@ -34,6 +34,9 @@ class ScriptedEngine implements RecoveryEngine {
           dataPercent: 50, unreadablePercent: 1, wipePatternDetected: false);
 
   @override
+  Future<int> freeBytes(Uri dir) async => 8 * 1024 * 1024 * 1024;
+
+  @override
   Stream<EngineProgress> createBackup(DeviceInfo device, Uri destination) =>
       _stream();
 
