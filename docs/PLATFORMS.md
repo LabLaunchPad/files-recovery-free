@@ -109,17 +109,33 @@
   PR quick-wins)** · macOS sandbox entitlement — **LANDED (removed from
   Release, PR quick-wins)** · Android zero permissions — **VERIFIED + guarded
   by CI test (PR quick-wins)** · zero `Semantics` labels anywhere in the UI
-  — open (Phase 3 accessibility pass).
+  — **LANDED (Phase 4 accessibility pass: StepDots/DriveMap/BlockBar/
+  device cards/EngineBadge labelled, decorative DotWave excluded,
+  semantics-tree tests in test/accessibility_test.dart)**.
 - High: placeholder LICENSE + missing third-party notices — open · UI-only
-  license gate — open (Ed25519 planned) · all errors collapsed to one string
-  — **LANDED (error-code map + per-OS remediation, PR quick-wins)** ·
+  license gate — **LANDED (Phase 4: Ed25519-signed FRF1 keys verified in
+  the Rust core with an embedded public key; `frf_license_verify` ABI;
+  signed ≠ dev-key distinction surfaced in the UI; sample identity
+  overridable via FRF_LICENSE_PUBKEY_B64)** · all errors collapsed to one
+  string — **LANDED (error-code map + per-OS remediation, PR quick-wins)** ·
   fabricated receipts while `frf_receipt_*` is unbound — **LANDED (engine
   receipts bound via FFI, PR quick-wins)** · no signing on any platform —
   open · `/tmp` hardcoded destinations with the folder picker disabled —
-  open (Phase 3 file pickers) · no purchase plumbing — open.
+  **LANDED (Phase 3 destination picker flow)** · no purchase plumbing —
+  **LANDED (Phase 4: signed-key persistence via shared_preferences,
+  startup restore with stale-key cleanup, checkout URL + license sheet
+  flow; store-IAP integration remains founder-side)**.
 - Also landed in quick-wins: **engine badge / watermark gate**
   (`EngineBadge` + `isDemo`) so simulated output can never pass as real
   recovery evidence, and the demo watermark now disappears on real engines.
+- Also landed in Phase 3: **real-device enumeration** (DiskArbitration-plane
+  / SetupAPI / sysfs+mountinfo), **engine cross-compile for Android/iOS
+  with the 16 KB page-size CI gate**, **raw-device alignment discipline**
+  (`AlignedSource`, true device capacity via OS queries — Phase 4a),
+  **iOS engine statically linked into the Runner binary** with an nm symbol
+  assert in CI (Phase 4a), **disk-image import everywhere + SAF ingestion
+  on Android** (Phase 4a), **EXIF DateTimeOriginal capture dates** carved
+  from JPEG headers (Phase 4b).
 
 ## Trust & distribution checklist (from the competitive teardown)
 

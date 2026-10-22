@@ -107,6 +107,12 @@ class HeldScriptEngine implements RecoveryEngine {
       mounted: true,
       fileSystem: 'RAW',
       sourcePath: path);
+  @override
+  Future<LicenseVerification> verifyLicense(String key) async {
+    final normalized = key.trim().toUpperCase();
+    final ok = RegExp(r'^FRF(-[A-Z2-7]{4}){2}$').hasMatch(normalized);
+    return LicenseVerification(valid: ok, signed: false);
+  }
 
   @override
   String get engineName => 'Golden script engine';

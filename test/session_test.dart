@@ -87,6 +87,12 @@ class ScriptedEngine implements RecoveryEngine {
       mounted: true,
       fileSystem: 'RAW',
       sourcePath: path);
+  @override
+  Future<LicenseVerification> verifyLicense(String key) async {
+    final normalized = key.trim().toUpperCase();
+    final ok = RegExp(r'^FRF(-[A-Z2-7]{4}){2}$').hasMatch(normalized);
+    return LicenseVerification(valid: ok, signed: false);
+  }
 
   @override
   String get engineName => 'Scripted engine';
@@ -200,13 +206,15 @@ void main() {
     expect(s.needsUpgradeForSelection, isTrue);
 
     // Bad key rejected.
-    expect(s.activateLicense('nope'), isFalse);
+    expect(await s.activateLicense('nope'), isFalse);
     expect(s.licensed, isFalse);
 
-    // Valid key unlocks.
-    expect(s.activateLicense('frf-abcd-2345'), isTrue,
+    // Valid dev-format key unlocks (simulated engine: format-only).
+    expect(await s.activateLicense('frf-abcd-2345'), isTrue,
         reason: 'keys are case-insensitive');
     expect(s.licensed, isTrue);
+    expect(s.licenseSigned, isFalse,
+        reason: 'simulated keys are format-only, never a purchase receipt');
     expect(s.needsUpgradeForSelection, isFalse);
   });
 

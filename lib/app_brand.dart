@@ -25,6 +25,11 @@ class AppBrand {
   /// One-time unlock price (matches the benchmark product's model).
   static const String proPrice = r'$29';
 
+  /// Where "Get a Pro key" lands until the store checkout is live — the
+  /// public Releases page is real, reachable and founder-controlled.
+  static const String proCheckoutUrl =
+      'https://github.com/LabLaunchPad/files-recovery-free/releases';
+
   /// Simulated license key format: FRF-XXXX-XXXX (X = base32 A-Z2-7).
   static const String licensePrefix = 'FRF';
 

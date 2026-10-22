@@ -210,6 +210,8 @@ pub fn run_scan<S: BlockSource>(
     let mut counter: u64 = 0;
     let mut window = vec![0u8; cfg.chunk];
     let mut ahead_scratch = vec![0u8; 1024 * 1024];
+    // EXIF header re-reads (JPEG capture dates); reused across candidates.
+    let mut exif_buf: Vec<u8> = Vec::with_capacity(256 * 1024);
 
     while offset < total {
         control.wait_while_paused();
@@ -342,6 +344,26 @@ pub fn run_scan<S: BlockSource>(
                 (FileState::Fragmented, 55, heuristic)
             };
 
+            // ---- capture date (JPEG EXIF DateTimeOriginal) -------------
+            // One bounded re-read of the header region; parse failure
+            // degrades to 0 (unknown) — never fails the carve.
+            let captured_at = if sig.name == "JPEG" {
+                let exif_len = (size as usize).min(256 * 1024);
+                if exif_len > 0 {
+                    exif_buf.clear();
+                    exif_buf.resize(exif_len, 0);
+                    if let Ok(n) = source.read_at(start_abs, &mut exif_buf[..exif_len]) {
+                        crate::exif::jpeg_capture_date(&exif_buf[..n]).unwrap_or(0)
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
             // ---- duplicate fingerprint (first 8 KiB) --------------------
             let mut fp_buf = [0u8; 8 * 1024];
             let fp_len = ((size as usize).min(fp_buf.len())).min(
@@ -371,7 +393,7 @@ pub fn run_scan<S: BlockSource>(
                 size,
                 kind: sig.kind,
                 state,
-                captured_at: 0,
+                captured_at,
                 duplicate,
                 confidence,
                 offset: start_abs,

@@ -12,6 +12,7 @@ import 'engine/ffi_entry.dart';
 import 'engine/recovery_engine.dart';
 import 'engine/simulated_engine.dart';
 import 'screens/wizard_screen.dart';
+import 'state/license_store.dart';
 import 'state/recovery_session.dart';
 
 /// Engine selection: `--dart-define=FRF_ENGINE_FFI=true` runs the Phase 2
@@ -27,7 +28,13 @@ RecoveryEngine _selectEngine() {
 }
 
 void main() {
-  runApp(FilesRecoveryFreeApp(session: RecoverySession(engine: _selectEngine())));
+  final session = RecoverySession(
+    engine: _selectEngine(),
+    licenseStore: SharedPrefsLicenseStore(),
+  );
+  // Restore a persisted signed Pro key (best-effort, async).
+  session.restoreLicense();
+  runApp(FilesRecoveryFreeApp(session: session));
 }
 
 class FilesRecoveryFreeApp extends StatelessWidget {

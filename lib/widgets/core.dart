@@ -81,35 +81,41 @@ class StepDots extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(S.steps.length * 2 - 1, (i) {
-        if (i.isOdd) {
-          final beforeConnector = i ~/ 2;
-          return Expanded(
-            child: Container(
-              height: 2,
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              color: beforeConnector < current
+    return Semantics(
+      container: true,
+      label: 'Step ${current + 1} of ${S.steps.length}: '
+          '${S.steps[current.clamp(0, S.steps.length - 1)]}',
+      excludeSemantics: true,
+      child: Row(
+        children: List.generate(S.steps.length * 2 - 1, (i) {
+          if (i.isOdd) {
+            final beforeConnector = i ~/ 2;
+            return Expanded(
+              child: Container(
+                height: 2,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                color: beforeConnector < current
+                    ? FrfColors.brandPrimary
+                    : FrfColors.hairline,
+              ),
+            );
+          }
+          final idx = i ~/ 2;
+          final done = idx < current;
+          final active = idx == current;
+          return AnimatedContainer(
+            duration: FrfMotion.standard,
+            width: active ? 26 : 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: done || active
                   ? FrfColors.brandPrimary
                   : FrfColors.hairline,
+              borderRadius: BorderRadius.circular(999),
             ),
           );
-        }
-        final idx = i ~/ 2;
-        final done = idx < current;
-        final active = idx == current;
-        return AnimatedContainer(
-          duration: FrfMotion.standard,
-          width: active ? 26 : 10,
-          height: 10,
-          decoration: BoxDecoration(
-            color: done || active
-                ? FrfColors.brandPrimary
-                : FrfColors.hairline,
-            borderRadius: BorderRadius.circular(999),
-          ),
-        );
-      }),
+        }),
+      ),
     );
   }
 }
@@ -136,20 +142,26 @@ class DriveMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cells = _cells;
-    return Wrap(
-      spacing: 2,
-      runSpacing: 2,
-      children: [
-        for (final c in cells)
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: c,
-              borderRadius: BorderRadius.circular(2),
+    return Semantics(
+      container: true,
+      label: '${survey.dataPercent.toStringAsFixed(0)}% ${S.surveyDataHeld}, '
+          '${survey.unreadablePercent.toStringAsFixed(0)}% ${S.surveyUnreadable}',
+      excludeSemantics: true,
+      child: Wrap(
+        spacing: 2,
+        runSpacing: 2,
+        children: [
+          for (final c in cells)
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: c,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -166,25 +178,30 @@ class BlockBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filled = (fraction.clamp(0.0, 1.0) * segments).round();
-    return Row(
-      children: List.generate(segments, (i) {
-        final isFilled = i < filled;
-        final isHead = i == filled - 1 && fraction < 1;
-        return Expanded(
-          child: Container(
-            height: 14,
-            margin: const EdgeInsets.symmetric(horizontal: 1.5),
-            decoration: BoxDecoration(
-              color: isFilled
-                  ? (isHead && paused
-                      ? FrfColors.rescue
-                      : FrfColors.brandPrimary)
-                  : FrfColors.blockEmpty,
-              borderRadius: BorderRadius.circular(3),
+    return Semantics(
+      container: true,
+      label: '${S.scanProgressLabel}: ${(fraction.clamp(0.0, 1.0) * 100).round()}%',
+      excludeSemantics: true,
+      child: Row(
+        children: List.generate(segments, (i) {
+          final isFilled = i < filled;
+          final isHead = i == filled - 1 && fraction < 1;
+          return Expanded(
+            child: Container(
+              height: 14,
+              margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              decoration: BoxDecoration(
+                color: isFilled
+                    ? (isHead && paused
+                        ? FrfColors.rescue
+                        : FrfColors.brandPrimary)
+                    : FrfColors.blockEmpty,
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
-          ),
-        );
-      }),
+          );
+        }),
+      ),
     );
   }
 }
@@ -215,46 +232,47 @@ class _DotWaveState extends State<DotWave>
   Widget build(BuildContext context) {
     // Respect the platform "reduce motion" setting: render a static wave.
     // This also makes golden tests deterministic.
-    if (MediaQuery.disableAnimationsOf(context)) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(7, (i) {
-          final dy = math.sin(i / 7 * math.pi) * 6;
-          return Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            transform: Matrix4.translationValues(0, -dy, 0),
-            decoration: BoxDecoration(
-              color: widget.color.withValues(alpha: 0.35 + 0.65 * (i / 7)),
-              shape: BoxShape.circle,
+    return ExcludeSemantics(
+      child: MediaQuery.disableAnimationsOf(context)
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(7, (i) {
+                final dy = math.sin(i / 7 * math.pi) * 6;
+                return Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  transform: Matrix4.translationValues(0, -dy, 0),
+                  decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.35 + 0.65 * (i / 7)),
+                    shape: BoxShape.circle,
+                  ),
+                );
+              }),
+            )
+          : AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) {
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(7, (i) {
+                    final t = (_c.value * 2 + i * 0.18) % 1.0;
+                    final dy = math.sin(t * math.pi) * 6;
+                    return Container(
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      transform: Matrix4.translationValues(0, -dy, 0),
+                      decoration: BoxDecoration(
+                        color: widget.color.withValues(
+                            alpha: 0.35 + 0.65 * math.sin(t * math.pi).abs()),
+                        shape: BoxShape.circle,
+                      ),
+                    );
+                  }),
+                );
+              },
             ),
-          );
-        }),
-      );
-    }
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(7, (i) {
-            final t = (_c.value * 2 + i * 0.18) % 1.0;
-            final dy = math.sin(t * math.pi) * 6;
-            return Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              transform: Matrix4.translationValues(0, -dy, 0),
-              decoration: BoxDecoration(
-                color: widget.color.withValues(
-                    alpha: 0.35 + 0.65 * math.sin(t * math.pi).abs()),
-                shape: BoxShape.circle,
-              ),
-            );
-          }),
-        );
-      },
     );
   }
 }
@@ -292,14 +310,19 @@ class EngineBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: FrfColors.surface,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: FrfColors.hairline),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
+    return Semantics(
+      container: true,
+      label: isDemo
+          ? '$engineName, demo engine'
+          : '$engineName, native recovery engine',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: FrfColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: FrfColors.hairline),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(isDemo ? Icons.science_outlined : Icons.memory_rounded,
             size: 14,
             color: isDemo ? FrfColors.warn : FrfColors.brandPrimary),
@@ -326,6 +349,7 @@ class EngineBadge extends StatelessWidget {
           ),
         ],
       ]),
+      ),
     );
   }
 }
@@ -339,28 +363,33 @@ class StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(FrfSpacing.l),
-      decoration: BoxDecoration(
-        color: FrfColors.surface,
-        borderRadius: BorderRadius.circular(FrfRadius.card),
-        border: Border.all(color: FrfColors.hairline),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(value,
-              style: TextStyle(
-                  fontSize: FrfType.stat,
-                  fontWeight: FontWeight.w700,
-                  color: valueColor ?? FrfColors.brandDark)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: const TextStyle(
-                  fontSize: FrfType.caption,
-                  color: FrfColors.mutedOnLight)),
-        ],
+    return Semantics(
+      container: true,
+      label: '$value $label',
+      excludeSemantics: true,
+      child: Container(
+        padding: const EdgeInsets.all(FrfSpacing.l),
+        decoration: BoxDecoration(
+          color: FrfColors.surface,
+          borderRadius: BorderRadius.circular(FrfRadius.card),
+          border: Border.all(color: FrfColors.hairline),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: TextStyle(
+                    fontSize: FrfType.stat,
+                    fontWeight: FontWeight.w700,
+                    color: valueColor ?? FrfColors.brandDark)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: FrfType.caption,
+                    color: FrfColors.mutedOnLight)),
+          ],
+        ),
       ),
     );
   }

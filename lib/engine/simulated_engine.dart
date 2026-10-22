@@ -98,6 +98,20 @@ class SimulatedEngine implements RecoveryEngine {
     return device;
   }
 
+  /// Contract: the simulated engine accepts the dev key FORMAT only —
+  /// `FRF-XXXX-XXXX` (base32 groups). Never a signed purchase receipt.
+  @override
+  Future<LicenseVerification> verifyLicense(String key) async {
+    await _wait(const Duration(milliseconds: 80));
+    final normalized = key.trim().toUpperCase();
+    final ok = RegExp(r'^FRF(-[A-Z2-7]{4}){2}$').hasMatch(normalized);
+    return LicenseVerification(
+      valid: ok,
+      signed: false,
+      detail: ok ? 'dev key (format-only, simulated engine)' : 'bad key format',
+    );
+  }
+
   // ----------------------------------------------------------------- survey
   @override
   Future<SurveyResult> survey(DeviceInfo device) async {

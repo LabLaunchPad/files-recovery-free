@@ -64,6 +64,34 @@ void main() {
     expect(engine.engineName, contains(engine.version));
   });
 
+  test('frf_license_verify: real Ed25519 chain (mint → verify)', () async {
+    // Sample perpetual key signed by the sample identity whose private
+    // key is NOT in the repository (scripts/mint_license_key.py).
+    const sampleKey =
+        'FRF1-RlJG-UFJP-MQEM-UQAA-AAAA-AAAA-AADh-uwuR-/iVo-P3WD-mrXM-LQMu-'
+        '/B0B-Elr1-jQf6-JYnO-0x2i-aki0-54WP-8Dtn-XBPC-Fm/A-qe1x-nyK2-aU+H-'
+        '/9jE-NY7k-vk8L';
+    final good = await engine.verifyLicense(sampleKey);
+    expect(good.valid, isTrue, reason: 'sample key must verify via the ABI');
+    expect(good.signed, isTrue);
+
+    // Signature failure: same shape, tampered payload.
+    final tampered = await engine.verifyLicense(
+        'FRF1-RlJG-UFJP-MQEM-VQAA-AAAA-AAAA-AADh-uwuR-/iVo-P3WD-mrXM-LQMu-'
+        '/B0B-Elr1-jQf6-JYnO-0x2i-aki0-54WP-8Dtn-XBPC-Fm/A-qe1x-nyK2-aU+H-'
+        '/9jE-NY7k-vk8L');
+    expect(tampered.valid, isFalse);
+
+    // Legacy dev-format keys are not license keys on the real engine.
+    final dev = await engine.verifyLicense('FRF-ABCD-2345');
+    expect(dev.valid, isFalse);
+    expect(dev.signed, isFalse);
+
+    // Garbage never throws, just fails.
+    final junk = await engine.verifyLicense('FRF1-!!!!');
+    expect(junk.valid, isFalse);
+  });
+
   test('lists the registered disk image as a scannable device', () async {
     final img = await _buildImage(
         '${Directory.systemTemp.path}/frf_dart_img_${DateTime.now().microsecondsSinceEpoch}.img');
