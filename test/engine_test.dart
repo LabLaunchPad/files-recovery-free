@@ -85,6 +85,36 @@ void main() {
       expect(last!.phase, ScanPhase.done);
     });
 
+    test('receipts are engine-sourced: empty before, evidence after',
+        () async {
+      // Before any recovery: honestly empty (no fabricated evidence).
+      expect(await engine.receipts(), isEmpty);
+
+      final files = await engine.browse('s');
+      final picked = [files[0], files[3]]; // intact + (damaged|fragmented)
+      final dest = Uri.file('/tmp/out/');
+      await for (final _ in engine.recover('s',
+          picked.map((f) => f.id).toList(), dest,
+          keepFolderStructure: true, byCaptureDate: false)) {}
+
+      final receipts = await engine.receipts();
+      expect(receipts, hasLength(2));
+      for (var i = 0; i < 2; i++) {
+        expect(receipts[i].fileId, picked[i].id);
+        expect(receipts[i].fileName, picked[i].name);
+        expect(receipts[i].verified, picked[i].state != FileState.unreadable);
+        expect(
+            receipts[i].targetPath,
+            '/tmp/out/${picked[i].relativeFolder}/${picked[i].name}',
+            reason: 'receipt path points at the real destination');
+      }
+    });
+
+    test('engine identity: simulated is demo (watermark gate)', () {
+      expect(engine.isDemo, isTrue);
+      expect(engine.engineName, isNotEmpty);
+    });
+
     test('concurrent operations are rejected (busy guard)', () async {
       final devices = await engine.listDevices();
       final slow = SimulatedEngine(tickScale: 0.5);

@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -54,6 +55,17 @@ class RecoverySession extends ChangeNotifier {
   final List<RecoveryReceipt> receipts = [];
   String? errorText;
 
+  /// Classified failure code for the last error (null when fine). Screens
+  /// use it plus [errorHint] for OS-specific remediation guidance.
+  FrfErrorCode? errorCode;
+
+  /// OS-specific remediation for [errorCode], or null.
+  String? get errorHint {
+    final c = errorCode;
+    if (c == null || c == FrfErrorCode.none) return null;
+    return remediationFor(c, os: Platform.operatingSystem);
+  }
+
   StreamSubscription<EngineProgress>? _sub;
   bool _disposed = false;
 
@@ -86,14 +98,15 @@ class RecoverySession extends ChangeNotifier {
   // -------------------------------------------------------------- choose
   Future<void> refreshDevices() async {
     errorText = null;
+    errorCode = null;
     busy = true;
     notifyListeners();
     try {
       devices = await engine.listDevices();
     } on EngineException catch (e) {
-      errorText = e.userMessage;
+      _fail(e.userMessage, technical: 'devices: $e', code: e.code);
     } catch (e) {
-      errorText = 'Could not list drives. Try again.';
+      _fail('Could not list drives. Try again.', technical: 'devices: $e');
     } finally {
       busy = false;
       _safeNotify();
@@ -116,13 +129,14 @@ class RecoverySession extends ChangeNotifier {
     _step = WizardStep.survey;
     busy = true;
     errorText = null;
+    errorCode = null;
     notifyListeners();
     try {
       surveyResult = await engine.survey(selectedDevice!);
     } on EngineException catch (e) {
-      errorText = e.userMessage;
-    } catch (_) {
-      errorText = 'Could not survey this drive. Try again.';
+      _fail(e.userMessage, technical: 'survey: $e', code: e.code);
+    } catch (e) {
+      _fail('Could not survey this drive. Try again.', technical: 'survey: $e');
     } finally {
       busy = false;
       _safeNotify();
@@ -151,6 +165,7 @@ class RecoverySession extends ChangeNotifier {
     unreadableAreas = 0;
     busy = true;
     errorText = null;
+    errorCode = null;
     foundFiles = [];
     notifyListeners();
     _sub?.cancel();
@@ -158,7 +173,8 @@ class RecoverySession extends ChangeNotifier {
         .scan(selectedDevice!, useBackupCopy: useBackupCopy)
         .listen(_onScanEvent,
             onError: (Object e) => _fail('The scan hit a problem and stopped.',
-                    'scan-error: $e'));
+                    technical: 'scan-error: $e',
+                    code: _codeOf(e)));
   }
 
   void _onScanEvent(EngineProgress p) {
@@ -173,7 +189,8 @@ class RecoverySession extends ChangeNotifier {
       case ScanPhase.failed:
         _fail(
             'The scan stopped. If the drive is failing, make a backup first '
-            'next time.');
+            'next time.',
+            code: FrfErrorCode.sourceUnreadable);
         break;
       case ScanPhase.cancelled:
         busy = false;
@@ -191,9 +208,14 @@ class RecoverySession extends ChangeNotifier {
       foundFiles = await engine.browse('session');
       selectedFileIds.clear();
       _step = WizardStep.look;
+    } on EngineException catch (e) {
+      _fail('Found files could not be listed. Try scanning again.',
+          technical: 'browse: $e',
+          code: e.code);
+      return;
     } catch (e) {
       _fail('Found files could not be listed. Try scanning again.',
-          'browse: $e');
+          technical: 'browse: $e');
       return;
     }
     _safeNotify();
@@ -248,6 +270,7 @@ class RecoverySession extends ChangeNotifier {
     progressFraction = 0;
     busy = true;
     errorText = null;
+    errorCode = null;
     receipts.clear();
     notifyListeners();
     _sub?.cancel();
@@ -259,7 +282,8 @@ class RecoverySession extends ChangeNotifier {
             onError: (Object e) => _fail(
                 'Recovery stopped before finishing. Your files were not '
                 'changed.',
-                'recover-error: $e'));
+                technical: 'recover-error: $e',
+                code: _codeOf(e)));
   }
 
   void _onRecoverEvent(EngineProgress p) {
@@ -268,25 +292,10 @@ class RecoverySession extends ChangeNotifier {
       case ScanPhase.done:
         busy = false;
         recoverPhase = RecoverPhase.done;
-        for (final id in selectedFileIds) {
-          final f = foundFiles.firstWhere((x) => x.id == id,
-              orElse: () => const RecoveredFile(
-                  id: '?',
-                  name: '?',
-                  relativeFolder: '',
-                  sizeBytes: 0,
-                  kind: FileKind.other,
-                  capturedAt: null,
-                  state: FileState.intact,
-                  duplicate: false,
-                  confidencePercent: 0));
-          receipts.add(RecoveryReceipt(
-              fileId: id,
-              fileName: f.name,
-              verified: f.state != FileState.unreadable,
-              targetPath:
-                  '/tmp/files-recovery-free/output/${f.relativeFolder}/${f.name}'));
-        }
+        // Receipts come from the ENGINE (per-file verification evidence),
+        // never from scan metadata. REA gap fix: frf_receipt_* is now the
+        // single source of truth for the receipt screen.
+        _loadReceipts();
         break;
       case ScanPhase.cancelled:
         busy = false;
@@ -300,6 +309,20 @@ class RecoverySession extends ChangeNotifier {
         break;
     }
     _safeNotify();
+  }
+
+  Future<void> _loadReceipts() async {
+    try {
+      final r = await engine.receipts();
+      if (_disposed || recoverPhase != RecoverPhase.done) return;
+      receipts
+        ..clear()
+        ..addAll(r);
+      _safeNotify();
+    } catch (e) {
+      // Honest degradation: show zero receipts rather than fabricate any.
+      debugPrint('RecoverySession: engine receipts unavailable: $e');
+    }
   }
 
   Future<void> cancelOperation() async {
@@ -325,6 +348,7 @@ class RecoverySession extends ChangeNotifier {
     surveyResult = null;
     backupDone = false;
     errorText = null;
+    errorCode = null;
     busy = false;
     recoverPhase = RecoverPhase.configure;
     receipts.clear();
@@ -333,12 +357,18 @@ class RecoverySession extends ChangeNotifier {
   }
 
   // -------------------------------------------------------------- internal
-  void _fail(String userMessage, [String? technical]) {
+  void _fail(String userMessage, {String? technical, FrfErrorCode? code}) {
     busy = false;
     errorText = userMessage;
+    errorCode = code;
     debugPrint('RecoverySession failure: $userMessage ($technical)');
     _safeNotify();
   }
+
+  /// Extracts the classified code when the stream error is a typed
+  /// EngineException; anything else stays unclassified.
+  static FrfErrorCode _codeOf(Object e) =>
+      e is EngineException ? e.code : FrfErrorCode.unknown;
 
   void _safeNotify() {
     if (!_disposed) notifyListeners();

@@ -6,6 +6,10 @@ library;
 
 import 'dart:async';
 
+import 'error_codes.dart';
+
+export 'error_codes.dart';
+
 enum DeviceKind { sdCard, usbStick, externalDisk, internalDisk, diskImage }
 
 class DeviceInfo {
@@ -89,12 +93,27 @@ class EngineProgress {
 }
 
 /// Typed engine failures so the UI can show precise, calm guidance.
+/// [code] classifies the failure (see error_codes.dart); `technical` may
+/// carry raw OS text that [classify] already derived the code from.
 class EngineException implements Exception {
   final String userMessage; // safe to display verbatim
   final String technical; // for logs
-  const EngineException(this.userMessage, [this.technical = '']);
+  final FrfErrorCode code;
+  const EngineException(this.userMessage,
+      [this.technical = '', this.code = FrfErrorCode.unknown]);
+
+  /// Classifies from the raw ABI error code + engine/OS message text.
+  factory EngineException.fromEngine(
+    String userMessage,
+    String technical, {
+    int abiCode = frfAbiOk,
+  }) =>
+      EngineException(userMessage, technical,
+          classify(abiCode: abiCode, message: technical));
+
   @override
-  String toString() => 'EngineException($userMessage, $technical)';
+  String toString() =>
+      'EngineException(${code.wire}, $userMessage, $technical)';
 }
 
 /// Result of a completed recovery run: per-file verification evidence.
@@ -141,6 +160,19 @@ abstract interface class RecoveryEngine {
   /// Optional pause/resume (scan UI button). No-op if unsupported.
   Future<void> pause() async {}
   Future<void> resume() async {}
+
+  /// Per-file verification receipts from the LAST completed recovery.
+  /// Engine-sourced evidence — the UI must never fabricate these.
+  /// Returns an empty list before the first recovery.
+  Future<List<RecoveryReceipt>> receipts();
+
+  /// Human-readable engine identity for the in-app engine badge.
+  String get engineName;
+
+  /// Watermark gate: true when this engine produces DEMO data (simulated),
+  /// so the UI can label outputs honestly instead of pretending they are
+  /// real recoveries.
+  bool get isDemo;
 }
 
 String humanBytes(num b) {

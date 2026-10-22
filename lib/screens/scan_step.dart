@@ -58,7 +58,7 @@ class ScanStep extends StatelessWidget {
                   const SizedBox(height: FrfSpacing.xl),
                   const DotWave(),
                   const SizedBox(height: FrfSpacing.xl),
-                  const Center(child: SimWatermark()),
+                  if (session.engine.isDemo) const Center(child: SimWatermark()),
                   if (s.errorText != null) ...[
                     const SizedBox(height: FrfSpacing.xl),
                     Container(

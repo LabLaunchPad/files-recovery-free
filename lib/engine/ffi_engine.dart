@@ -144,6 +144,10 @@ typedef _BrowseCountC = Int32 Function();
 typedef _BrowseCountD = int Function();
 typedef _BrowseGetC = Int32 Function(Int32, Pointer<FrfFile>);
 typedef _BrowseGetD = int Function(int, Pointer<FrfFile>);
+typedef _ReceiptCountC = Int32 Function();
+typedef _ReceiptCountD = int Function();
+typedef _ReceiptGetC = Int32 Function(Int32, Pointer<FrfReceipt>);
+typedef _ReceiptGetD = int Function(int, Pointer<FrfReceipt>);
 
 final class FrfSurveySession extends Opaque {}
 
@@ -186,6 +190,10 @@ class FfiRecoveryEngine implements RecoveryEngine {
     _browseCount =
         _lib.lookupFunction<_BrowseCountC, _BrowseCountD>('frf_browse_count');
     _browseGet = _lib.lookupFunction<_BrowseGetC, _BrowseGetD>('frf_browse_get');
+    _receiptCount = _lib
+        .lookupFunction<_ReceiptCountC, _ReceiptCountD>('frf_receipt_count');
+    _receiptGet =
+        _lib.lookupFunction<_ReceiptGetC, _ReceiptGetD>('frf_receipt_get');
   }
 
   final DynamicLibrary _lib;
@@ -210,11 +218,14 @@ class FfiRecoveryEngine implements RecoveryEngine {
   late final _VoidSessD _sessionFree;
   late final _BrowseCountD _browseCount;
   late final _BrowseGetD _browseGet;
+  late final _ReceiptCountD _receiptCount;
+  late final _ReceiptGetD _receiptGet;
 
   Pointer<FrfEvent>? _eventBuf;
   Pointer<FrfSourceInfo>? _srcBuf;
   Pointer<FrfFile>? _fileBuf;
   Pointer<FrfSurvey>? _surveyBuf;
+  Pointer<FrfReceipt>? _receiptBuf;
   Pointer<FrfSession>? _active;
 
   static FfiRecoveryEngine? tryLoad() {
@@ -297,12 +308,20 @@ class FfiRecoveryEngine implements RecoveryEngine {
     return _surveyBuf!;
   }
 
+  Pointer<FrfReceipt> get _rc {
+    _receiptBuf ??= calloc<FrfReceipt>();
+    return _receiptBuf!;
+  }
+
   /// Registers one disk image explicitly (tests / drag & drop).
   int registerImage(String path) {
     final p = _cstr(path);
     try {
       final rc = _addImage(p);
-      if (rc < 0) throw EngineException('Could not open that image.', _err());
+      if (rc < 0) {
+        throw EngineException.fromEngine(
+            'Could not open that image.', _err());
+      }
       return rc;
     } finally {
       _freeC(p);
@@ -340,7 +359,7 @@ class FfiRecoveryEngine implements RecoveryEngine {
     final ss = _surveyStart(p);
     _freeC(p);
     if (ss == nullptr) {
-      throw EngineException('Could not survey this drive.', _err());
+      throw EngineException.fromEngine('Could not survey this drive.', _err());
     }
     try {
       while (true) {
@@ -354,7 +373,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
           );
         }
         if (rc < 0) {
-          throw EngineException('Could not survey this drive. Try again.', _err());
+          throw EngineException.fromEngine(
+              'Could not survey this drive. Try again.', _err());
         }
         await Future<void>.delayed(const Duration(milliseconds: 6));
       }
@@ -398,14 +418,17 @@ class FfiRecoveryEngine implements RecoveryEngine {
               return;
             default:
               final msg = _arrStr(_ev.ref.message, 256);
-              throw EngineException(
+              throw EngineException.fromEngine(
                 'The engine hit a problem and stopped.',
                 'ffi error ${_ev.ref.errorCode}: $msg',
+                abiCode: _ev.ref.errorCode,
               );
           }
         } else if (rc < 0) {
           throw const EngineException(
-              'The engine stopped unexpectedly.', 'ffi: session dead');
+              'The engine stopped unexpectedly.',
+              'ffi: session dead',
+              FrfErrorCode.sourceUnreadable);
         } else {
           await Future<void>.delayed(const Duration(milliseconds: 6));
         }
@@ -424,7 +447,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
     _freeC(id);
     _freeC(dest);
     if (s == nullptr) {
-      throw EngineException('Could not start the backup.', _err());
+      throw EngineException.fromEngine(
+          'Could not start the backup.', _err());
     }
     yield* _pump(s, device.totalBytes);
   }
@@ -435,7 +459,7 @@ class FfiRecoveryEngine implements RecoveryEngine {
     final s = _scanStart(id, useBackupCopy ? 1 : 0);
     _freeC(id);
     if (s == nullptr) {
-      throw EngineException('Could not start the scan.', _err());
+      throw EngineException.fromEngine('Could not start the scan.', _err());
     }
     yield* _pump(s, device.totalBytes);
   }
@@ -473,7 +497,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
     required bool byCaptureDate,
   }) async* {
     if (fileIds.isEmpty) {
-      throw const EngineException('Nothing selected to recover.', 'empty');
+      throw const EngineException(
+          'Nothing selected to recover.', 'empty', FrfErrorCode.invalidArg);
     }
     final csv = _cstr(fileIds.join(','));
     final dest = _cstr(destination.toFilePath());
@@ -482,7 +507,8 @@ class FfiRecoveryEngine implements RecoveryEngine {
     _freeC(csv);
     _freeC(dest);
     if (s == nullptr) {
-      throw EngineException('Could not start the recovery.', _err());
+      throw EngineException.fromEngine(
+          'Could not start the recovery.', _err());
     }
     final total = _pendingBytes(fileIds);
     yield* _pump(s, total);
@@ -499,6 +525,35 @@ class FfiRecoveryEngine implements RecoveryEngine {
     }
     return total;
   }
+
+  // ------------------------------------------------------------ receipts
+
+  /// Engine-sourced receipts from the last completed recovery (frf_receipt_*).
+  /// This is the real binding: verification evidence comes from the Rust
+  /// core that wrote and verified the bytes, never from UI metadata.
+  @override
+  Future<List<RecoveryReceipt>> receipts() async {
+    final n = _receiptCount();
+    final out = <RecoveryReceipt>[];
+    for (var i = 0; i < n; i++) {
+      if (_receiptGet(i, _rc) != 0) continue;
+      out.add(RecoveryReceipt(
+        fileId: _arrStr(_rc.ref.fileId, 32),
+        fileName: _arrStr(_rc.ref.fileName, 128),
+        verified: _rc.ref.verified == 1,
+        targetPath: _arrStr(_rc.ref.targetPath, 512),
+      ));
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------- identity
+
+  @override
+  String get engineName => 'Native carving engine ($version)';
+
+  @override
+  bool get isDemo => false;
 
   // ------------------------------------------------------------- control
 

@@ -281,6 +281,55 @@ class SimWatermark extends StatelessWidget {
   }
 }
 
+/// Engine identity chip (watermark gate companion). Shows which engine is
+/// running; amber tag marks DEMO data so simulated output can never pass
+/// as real recovery evidence. Real engines render without the tag.
+class EngineBadge extends StatelessWidget {
+  final String engineName;
+  final bool isDemo;
+  const EngineBadge(
+      {super.key, required this.engineName, required this.isDemo});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: FrfColors.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: FrfColors.hairline),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(isDemo ? Icons.science_outlined : Icons.memory_rounded,
+            size: 14,
+            color: isDemo ? FrfColors.warn : FrfColors.brandPrimary),
+        const SizedBox(width: 6),
+        Text(engineName,
+            style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: FrfColors.mutedOnLight)),
+        if (isDemo) ...[
+          const SizedBox(width: 6),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: FrfColors.warn.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: const Text('DEMO',
+                style: TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: Color(0xFF7A5205))),
+          ),
+        ],
+      ]),
+    );
+  }
+}
+
 // --------------------------------------------------------------- stat card
 class StatCard extends StatelessWidget {
   final String value;
