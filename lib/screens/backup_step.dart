@@ -1,11 +1,13 @@
 // screens/backup_step.dart — Step 3: safety copy before scanning.
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../design/tokens.dart';
 import '../engine/recovery_engine.dart';
 import '../l10n/app_strings.dart';
+import '../state/destination.dart';
 import '../state/recovery_session.dart';
 import '../widgets/core.dart';
 
@@ -21,6 +23,12 @@ class _BackupStepState extends State<BackupStep> {
   double _fraction = 0;
   bool _running = false;
   bool _verifying = false;
+
+  /// Where the safety copy goes. Null = per-OS default next to the
+  /// recovery output (same per-OS default root the recover step uses).
+  String? _backupDir;
+
+  String get _effectiveDir => _backupDir ?? defaultDestinationRoot();
 
   @override
   void initState() {
@@ -39,6 +47,19 @@ class _BackupStepState extends State<BackupStep> {
   }
 
   Future<void> _runBackup() async {
+    final source = widget.session.selectedDevice;
+    if (source != null &&
+        DestinationSafety.isInsideOrEqual(_effectiveDir, source.mountPoint ?? '') ||
+        (source != null &&
+            DestinationSafety.isInsideOrEqual(
+                _effectiveDir, source.sourcePath ?? ''))) {
+      // The one backup-specific guard: never copy a drive onto itself.
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text(S.backupOnSource)),
+      );
+      return;
+    }
     setState(() {
       _running = true;
       _fraction = 0;
@@ -46,7 +67,7 @@ class _BackupStepState extends State<BackupStep> {
     try {
       await for (final p in widget.session.engine.createBackup(
           widget.session.selectedDevice!,
-          Uri.file('/tmp/files-recovery-free/backup.img'))) {
+          Uri.file('$_effectiveDir/backup.img'))) {
         if (!mounted) return;
         setState(() => _fraction = p.fraction);
         if (p.phase == ScanPhase.cancelled) {
@@ -91,29 +112,41 @@ class _BackupStepState extends State<BackupStep> {
                       borderRadius: BorderRadius.circular(FrfRadius.card),
                       border: Border.all(color: FrfColors.hairline),
                     ),
-                    child: const Column(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(S.backupDestinationLabel,
+                        const Text(S.backupDestinationLabel,
                             style: TextStyle(
                                 fontSize: FrfType.caption,
                                 fontWeight: FontWeight.w700,
                                 color: FrfColors.mutedOnLight)),
-                        SizedBox(height: FrfSpacing.s),
+                        const SizedBox(height: FrfSpacing.s),
                         Row(
                           children: [
-                            Icon(Icons.folder_rounded,
+                            const Icon(Icons.folder_rounded,
                                 color: FrfColors.brandPrimary),
-                            SizedBox(width: FrfSpacing.s),
+                            const SizedBox(width: FrfSpacing.s),
                             Expanded(
                               child: Text(
-                                  '/tmp/files-recovery-free/backup.img',
-                                  style: TextStyle(
+                                  '$_effectiveDir/backup.img'
+                                  '  ·  ${_backupDir == null ? S.recoverDestDefault : ''}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
                                       fontSize: 13.5,
                                       fontFeatures: [],
                                       color: FrfColors.brandDark)),
                             ),
-                            GhostCta(S.backupPick, onPressed: null),
+                            GhostCta(
+                                kIsWeb ? S.recoverDestWeb : S.backupPick,
+                                onPressed: kIsWeb
+                                    ? null
+                                    : () async {
+                                        final picked =
+                                            await widget.session.pickDirectory();
+                                        if (picked != null && picked.isNotEmpty) {
+                                          setState(() => _backupDir = picked);
+                                        }
+                                      }),
                           ],
                         ),
                       ],

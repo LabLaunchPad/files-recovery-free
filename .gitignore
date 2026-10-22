@@ -54,3 +54,6 @@ app.*.map.json
 # Rust build artifacts
 /rust/target/
 test/failures/
+
+# Rust engine cross-compile output (built by CI / cargo-ndk)
+android/app/src/main/jniLibs/

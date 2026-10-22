@@ -194,4 +194,29 @@ void main() {
     }
     expect(terminal, ScanPhase.cancelled);
   });
+
+  test('frf_free_bytes reports real free space on a temp volume', () async {
+    final tmp = await Directory.systemTemp.createTemp('frf_free');
+    try {
+      final free = await engine.freeBytes(Uri.file(tmp.path));
+      expect(free, greaterThan(0), reason: 'statvfs should report free bytes');
+    } finally {
+      tmp.deleteSync(recursive: true);
+    }
+  });
+
+  test('device enumeration exposes real devices with OS paths', () async {
+    final devices = await engine.listDevices();
+    for (final d in devices) {
+      expect(d.totalBytes, greaterThan(0));
+      // every real source carries its OS path so destination safety can
+      // compare against the source drive
+      expect(d.sourcePath, isNotNull, reason: 'device ${d.id} needs a path');
+      expect(d.sourcePath, isNotEmpty);
+    }
+    // The engine singleton sources include at least the registered image
+    // (from earlier tests in this file, order-dependent by design) and any
+    // real block devices present on the host. No assertion on count: the
+    // ABI test in Rust covers the hard guarantees.
+  });
 }

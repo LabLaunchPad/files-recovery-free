@@ -19,6 +19,16 @@ class DeviceInfo {
   final bool mounted;
   final bool isSystemDisk; // locked with explanation, never scannable
   final String? fileSystem;
+
+  /// Where the OS exposes this source to the engine, e.g. `/dev/sdb1`,
+  /// `/dev/disk4s1`, `\\.\PhysicalDrive1` — used by destination safety
+  /// checks (never recover onto the source). Null on simulated devices.
+  final String? sourcePath;
+
+  /// Mount point of the volume when mounted (e.g. `/media/user/USB`),
+  /// empty/unset for raw disks without a filesystem mount.
+  final String? mountPoint;
+
   const DeviceInfo({
     required this.id,
     required this.name,
@@ -27,6 +37,8 @@ class DeviceInfo {
     required this.mounted,
     this.isSystemDisk = false,
     this.fileSystem,
+    this.sourcePath,
+    this.mountPoint,
   });
 
   String get sizeLabel => humanBytes(totalBytes);
@@ -165,6 +177,11 @@ abstract interface class RecoveryEngine {
   /// Engine-sourced evidence — the UI must never fabricate these.
   /// Returns an empty list before the first recovery.
   Future<List<RecoveryReceipt>> receipts();
+
+  /// Free bytes on the volume holding [dir], visible to the current
+  /// (unprivileged) user. Returns 0 when unknown — callers degrade to a
+  /// warning instead of blocking the flow.
+  Future<int> freeBytes(Uri dir);
 
   /// Human-readable engine identity for the in-app engine badge.
   String get engineName;

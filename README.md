@@ -108,15 +108,32 @@ rust/
 Run the real engine (Linux bundles ship the dylib; macOS/Windows via CI):
 
 ```bash
-cargo test --manifest-path rust/Cargo.toml --workspace   # 8 engine tests
-flutter test                                             # 53 tests incl. FFI
+cargo test --manifest-path rust/Cargo.toml --workspace   # 14 engine tests
+flutter test                                             # 95 tests incl. FFI
 flutter run -d linux --dart-define=FRF_ENGINE_FFI=true
 ```
 
+### Phase 3 — real devices, cross-compiled engine, honest destinations
+
+- **Device enumeration** (read-only, never elevated): IOKit `IOMedia` on
+  macOS, SetupAPI + zero-access IOCTLs on Windows, sysfs + mountinfo on
+  Linux/Android — partitions, mounts, filesystems, system-disk lock — fed
+  through the same `frf_source_*` C ABI.
+- **Engine cross-compile**: `cargo-ndk` ships the engine inside the Android
+  APK (arm64-v8a / armeabi-v7a / x86_64) with 16 KB page-size linker flags;
+  iOS builds ship a `librecovery_core_ffi.xcframework` (device + simulator).
+- **16 KB page-size gate**: `scripts/check_16kb_pagesize.py` asserts every
+  `lib/**/*.so` in the APK (self-tested; positive and negative controls) —
+  the Play requirement that blocks non-compliant updates from 2027-02-01.
+- **Destination flow**: native folder pickers (`file_selector`), per-OS
+  defaults instead of hardcoded `/tmp`, engine-sourced free space
+  (`frf_free_bytes`), writability probe, and a hard guard against
+  recovering onto the source drive.
+
 Without the define (or without the dylib) the app falls back to the
 simulated engine — zero regression for existing bundles.
-See `docs/phase2_gap_analysis.md` for the REA-assisted gap analysis and the
-Phase 3 backlog.
+See `docs/phase2_gap_analysis.md` for the REA-assisted gap analysis and
+`docs/PLATFORMS.md` for the per-OS playbooks and the landed Phase 3 ledger.
 
 ## Repository layout
 

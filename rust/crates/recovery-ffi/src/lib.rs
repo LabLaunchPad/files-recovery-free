@@ -44,6 +44,7 @@ pub struct FrfSourceInfo {
     pub is_system: u32,
     pub fs: [u8; 16],
     pub path: [u8; 512],
+    pub mount: [u8; 256],
 }
 
 #[repr(C)]
@@ -103,6 +104,7 @@ struct Source {
     is_system: bool,
     fs: String,
     path: Option<PathBuf>,
+    mount: String,
 }
 
 #[derive(Default)]
@@ -133,6 +135,51 @@ fn set_err(msg: impl Into<String>) {
 
 // ---------------------------------------------------------------- helpers
 
+/// Free bytes on the volume holding `path`, visible to the current
+/// (unprivileged) user. Used for the destination free-space check.
+/// 0 means "cannot check" — callers degrade to a warning, not a block.
+#[no_mangle]
+pub unsafe extern "C" fn frf_free_bytes(path: *const c_char) -> c_ulonglong {
+    let Some(p) = read_cstr(path) else {
+        set_err("null path");
+        return 0;
+    };
+    free_bytes_inner(p).unwrap_or(0)
+}
+
+#[cfg(unix)]
+fn free_bytes_inner(path: &str) -> Option<u64> {
+    let c = CString::new(path).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::statvfs(c.as_ptr(), &mut st) };
+    if rc != 0 {
+        return None;
+    }
+    Some(st.f_bavail as u64 * st.f_frsize as u64)
+}
+
+#[cfg(target_os = "windows")]
+fn free_bytes_inner(path: &str) -> Option<u64> {
+    let mut w: Vec<u16> = path.encode_utf16().collect();
+    w.push(0);
+    let (mut avail, mut total, mut free) = (0u64, 0u64, 0u64);
+    let rc = unsafe {
+        get_disk_free_space_ex_w(w.as_ptr(), &mut avail, &mut total, &mut free)
+    };
+    (rc != 0).then_some(avail)
+}
+
+#[cfg(target_os = "windows")]
+extern "system" {
+    #[link_name = "GetDiskFreeSpaceExW"]
+    fn get_disk_free_space_ex_w(
+        dir: *const u16,
+        avail: *mut u64,
+        total: *mut u64,
+        free: *mut u64,
+    ) -> i32;
+}
+
 unsafe fn put_str(buf: &mut [u8], s: &str) {
     let b = s.as_bytes();
     let n = b.len().min(buf.len() - 1);
@@ -151,8 +198,10 @@ unsafe fn read_cstr<'a>(p: *const c_char) -> Option<&'a str> {
 // ----------------------------------------------------------- sources
 
 /// (Re)enumerate scannable sources: disk images from the FRF_SOURCE_PATHS
-/// env var (colon-separated) and, on Linux, real block devices from
-/// /sys/block. Returns the source count.
+/// env var (colon-separated), pinned (registered) images, and real block
+/// devices/volumes from `recovery_core::enumerate` — IOKit on macOS,
+/// SetupAPI on Windows, sysfs+mountinfo on Linux. Read-only discovery,
+/// never needs elevation. Returns the source count.
 fn refresh_sources_inner() -> usize {
     let mut list: Vec<Source> = Vec::new();
     if let Ok(paths) = std::env::var("FRF_SOURCE_PATHS") {
@@ -170,58 +219,29 @@ fn refresh_sources_inner() -> usize {
                     is_system: false,
                     fs: "RAW".into(),
                     path: Some(PathBuf::from(p)),
+                    mount: String::new(),
                 });
             }
         }
     }
 
-    #[allow(unused_mut)]
-    let mut block_devs: Vec<Source> = Vec::new();
-    #[cfg(target_os = "linux")]
-    {
-        let root_block = parse_root_block();
-        if let Ok(rd) = fs::read_dir("/sys/block") {
-            let mut devs: Vec<Source> = Vec::new();
-            for entry in rd.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with("loop")
-                    || name.starts_with("ram")
-                    || name.starts_with("zram")
-                    || name.starts_with("dm-")
-                {
-                    continue;
-                }
-                let sectors: u64 = fs::read_to_string(entry.path().join("size"))
-                    .ok()
-                    .and_then(|s| s.trim().parse().ok())
-                    .unwrap_or(0);
-                if sectors == 0 {
-                    continue;
-                }
-                let removable = fs::read_to_string(entry.path().join("removable"))
-                    .ok()
-                    .and_then(|s| s.trim().parse::<u32>().ok())
-                    .unwrap_or(0)
-                    == 1;
-                let model = fs::read_to_string(entry.path().join("device/model"))
-                    .ok()
-                    .map(|s| s.trim().to_string())
-                    .unwrap_or_default();
-                devs.push(Source {
-                    id: format!("blk{name}"),
-                    name: if model.is_empty() { name.clone() } else { model },
-                    total: sectors * 512,
-                    kind: if removable { 1 } else { 3 },
-                    mounted: true,
-                    is_system: root_block.as_deref() == Some(name.as_str()),
-                    fs: String::new(),
-                    path: Some(PathBuf::from(format!("/dev/{name}"))),
-                });
-            }
-            devs.sort_by(|a, b| a.id.cmp(&b.id));
-            block_devs = devs;
-        }
-    }
+    // Real devices, all desktop OSes (Phase 3). Whole disks AND mounted
+    // volumes/partitions are listed; scanning a locked system disk stays
+    // refused one layer up (UI) and by OS permissions at open time.
+    let block_devs: Vec<Source> = recovery_core::enumerate::enumerate()
+        .into_iter()
+        .map(|d| Source {
+            id: d.id,
+            name: d.name,
+            total: d.total,
+            kind: d.kind,
+            mounted: d.mounted,
+            is_system: d.is_system,
+            fs: d.fs,
+            path: Some(PathBuf::from(d.path)),
+            mount: d.mount,
+        })
+        .collect();
 
     // order: env images -> pinned (registered) images -> block devices
     let n = {
@@ -232,27 +252,6 @@ fn refresh_sources_inner() -> usize {
         st.sources.len()
     };
     n
-}
-
-#[cfg(target_os = "linux")]
-fn parse_root_block() -> Option<String> {
-    let cmdline = fs::read_to_string("/proc/cmdline").ok()?;
-    let root = cmdline.split_whitespace().find(|t| t.starts_with("root="))?;
-    let mut dev = root.trim_start_matches("root=").to_string();
-    if dev.starts_with("UUID=") || dev.starts_with("PARTUUID=") || dev.starts_with("/dev/mapper") {
-        return None;
-    }
-    dev = dev.trim_start_matches("/dev/").to_string();
-    if (dev.starts_with("nvme") || dev.starts_with("mmcblk")) && dev.contains('p') {
-        if let Some(p) = dev.rfind('p') {
-            dev.truncate(p);
-        }
-    } else {
-        while dev.chars().last().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-            dev.pop();
-        }
-    }
-    Some(dev)
 }
 
 // ------------------------------------------------------------ sessions
@@ -304,6 +303,7 @@ fn open_source(source_id: &str) -> Result<(FileSource, Source), ()> {
         is_system: src.is_system,
         fs: src.fs.clone(),
         path: src.path.clone(),
+        mount: src.mount.clone(),
     };
     match FileSource::open(&path) {
         Ok(fs) => Ok((fs, info)),
@@ -463,6 +463,7 @@ pub unsafe extern "C" fn frf_source_add_image(path: *const c_char) -> c_int {
         is_system: false,
         fs: "RAW".into(),
         path: Some(PathBuf::from(p)),
+        mount: String::new(),
     };
     // id = img<N> stable per registered image
     src.id = format!("img{}", st.pinned.len());
@@ -501,6 +502,7 @@ pub unsafe extern "C" fn frf_source_get(index: c_int, out: *mut FrfSourceInfo) -
     out.is_system = src.is_system as u32;
     put_str(&mut out.fs, &src.fs);
     put_str(&mut out.path, &src.path.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default());
+    put_str(&mut out.mount, &src.mount);
     0
 }
 
@@ -624,6 +626,7 @@ pub unsafe extern "C" fn frf_scan_start(
             is_system: src.is_system,
             fs: src.fs.clone(),
             path: Some(use_backup_path.unwrap_or(p)),
+            mount: src.mount.clone(),
         };
         (meta.path.clone().unwrap(), meta)
     };
@@ -685,6 +688,7 @@ pub unsafe extern "C" fn frf_recover_start(
         is_system: false,
         fs: String::new(),
         path: Some(source_path),
+        mount: String::new(),
     };
     spawn_scan_session(
         source,

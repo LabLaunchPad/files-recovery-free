@@ -11,6 +11,7 @@
 //! orders so the FFI layer can pass integers straight through.
 
 pub mod blocksource;
+pub mod enumerate;
 pub mod ops;
 pub mod scanner;
 pub mod signatures;
