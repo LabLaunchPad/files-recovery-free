@@ -17,7 +17,7 @@ fn enumerate_never_panics_and_is_sane() {
     for d in &devs {
         assert!(!d.id.is_empty(), "id must be set: {d:?}");
         assert!(!d.path.is_empty(), "path must be set: {d:?}");
-        assert!(d.total > 0, "size must be positive: {d:?}");
+        assert!(d.total > 0 || d.mounted, "size or mounted required: {d:?}");
         assert!(d.kind <= 3, "kind must be a device kind (not image): {d:?}");
         // ids are unique across the whole enumeration
     }

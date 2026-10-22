@@ -300,9 +300,8 @@ mod macos {
         fn CFStringCreateWithCString(alloc: CfRef, cstr: *const c_char, encoding: u32) -> CfRef;
         fn CFStringGetCString(s: CfRef, buf: *mut c_char, max: isize, encoding: u32) -> u8;
         fn CFNumberGetValue(num: CfRef, ty: usize, out: *mut u64) -> u8;
+        fn CFBooleanGetValue(b: CfRef) -> u8;
         fn CFRelease(o: CfRef);
-
-        static kCFBooleanTrue: c_void;
     }
 
     fn make_key(s: &str) -> CfRef {
@@ -332,10 +331,13 @@ mod macos {
     }
 
     unsafe fn get_bool(dict: CfRef, k: CfRef) -> bool {
-        // CFBooleanTrue/False are singletons; presence alone is not truth.
         let v = CFDictionaryGetValue(dict, k);
-        !v.is_null()
-            && std::ptr::eq(v, std::ptr::addr_of!(kCFBooleanTrue) as CfRef)
+        if v.is_null() {
+            return false;
+        }
+        // CFBooleanGetValue is the documented accessor — robust regardless
+        // of singleton identity across framework load states.
+        CFBooleanGetValue(v) != 0
     }
 
     struct FsMount {
@@ -401,75 +403,113 @@ mod macos {
 
         unsafe {
             let matching = IOServiceMatching(b"IOMedia\0".as_ptr() as *const c_char);
-            if matching.is_null() {
-                return out;
-            }
-            let mut it: IoObject = 0;
-            if IOServiceGetMatchingServices(KIOMAINPORTDEFAULT, matching, &mut it) != 0 {
-                return out;
-            }
-            let k_bsd = make_key("BSD Name");
-            let k_size = make_key("Size");
-            let k_writable = make_key("Writable");
-            let k_removable = make_key("Removable");
-            let k_whole = make_key("Whole");
-            let k_leaf = make_key("Leaf");
+            if !matching.is_null() {
+                let mut it: IoObject = 0;
+                if IOServiceGetMatchingServices(KIOMAINPORTDEFAULT, matching, &mut it) == 0 {
+                    let k_bsd = make_key("BSD Name");
+                    let k_size = make_key("Size");
+                    let k_writable = make_key("Writable");
+                    let k_removable = make_key("Removable");
+                    let k_whole = make_key("Whole");
+                    let k_leaf = make_key("Leaf");
 
-            loop {
-                let entry = IOIteratorNext(it);
-                if entry == 0 {
-                    break;
-                }
-                let mut props: CfRef = std::ptr::null_mut();
-                if IORegistryEntryCreateCFProperties(entry, &mut props, std::ptr::null_mut(), 0)
-                    == 0
-                    && !props.is_null()
-                {
-                    let bsd = get_str(props, k_bsd).unwrap_or_default();
-                    let size = get_u64(props, k_size).unwrap_or(0);
-                    let whole = get_bool(props, k_whole);
-                    let leaf = get_bool(props, k_leaf);
-                    if !bsd.is_empty() && size > 0 && (whole || leaf) {
-                        let removable = get_bool(props, k_removable);
-                        let writable = get_bool(props, k_writable);
-                        let mount = mounts.iter().find(|m| m.from == format!("/dev/{bsd}"));
-                        out.push(OsDevice {
-                            id: format!("{}{bsd}", if whole { "bsd" } else { "vol" }),
-                            name: display_name(bsd.as_str(), whole, size,
-                                mount.map(|x| x.fstype.as_str())),
-                            kind: if removable { 2 } else { 3 },
-                            total: size,
-                            mounted: mount.is_some(),
-                            is_system: if whole {
-                                root_disk.as_deref() == Some(bsd.as_str())
-                            } else {
-                                mount.map(|x| x.on == "/").unwrap_or(false)
-                            },
-                            fs: mount.map(|x| x.fstype.clone()).unwrap_or_default(),
-                            mount: mount.map(|x| x.on.clone()).unwrap_or_default(),
-                            path: format!("/dev/{bsd}"),
-                            writable,
-                        });
+                    loop {
+                        let entry = IOIteratorNext(it);
+                        if entry == 0 {
+                            break;
+                        }
+                        let mut props: CfRef = std::ptr::null_mut();
+                        if IORegistryEntryCreateCFProperties(
+                            entry,
+                            &mut props,
+                            std::ptr::null_mut(),
+                            0,
+                        ) == 0
+                            && !props.is_null()
+                        {
+                            let bsd = get_str(props, k_bsd).unwrap_or_default();
+                            let size = get_u64(props, k_size).unwrap_or(0);
+                            let whole = get_bool(props, k_whole);
+                            let leaf = get_bool(props, k_leaf);
+                            if !bsd.is_empty() && size > 0 && (whole || leaf) {
+                                let removable = get_bool(props, k_removable);
+                                let writable = get_bool(props, k_writable);
+                                let mount =
+                                    mounts.iter().find(|m| m.from == format!("/dev/{bsd}"));
+                                out.push(OsDevice {
+                                    id: format!("{}{bsd}", if whole { "bsd" } else { "vol" }),
+                                    name: display_name(bsd.as_str(), whole, size,
+                                        mount.map(|x| x.fstype.as_str())),
+                                    kind: if removable { 2 } else { 3 },
+                                    total: size,
+                                    mounted: mount.is_some(),
+                                    is_system: if whole {
+                                        root_disk.as_deref() == Some(bsd.as_str())
+                                    } else {
+                                        mount.map(|x| x.on == "/").unwrap_or(false)
+                                    },
+                                    fs: mount.map(|x| x.fstype.clone()).unwrap_or_default(),
+                                    mount: mount.map(|x| x.on.clone()).unwrap_or_default(),
+                                    path: format!("/dev/{bsd}"),
+                                    writable,
+                                });
+                            }
+                            CFRelease(props);
+                        }
+                        IOObjectRelease(entry);
                     }
-                    CFRelease(props);
-                }
-                IOObjectRelease(entry);
-            }
 
-            CFRelease(k_bsd);
-            CFRelease(k_size);
-            CFRelease(k_writable);
-            CFRelease(k_removable);
-            CFRelease(k_whole);
-            CFRelease(k_leaf);
-            IOObjectRelease(it);
+                    CFRelease(k_bsd);
+                    CFRelease(k_size);
+                    CFRelease(k_writable);
+                    CFRelease(k_removable);
+                    CFRelease(k_whole);
+                    CFRelease(k_leaf);
+                    IOObjectRelease(it);
+                }
+            }
         }
 
+        // Defensive fallback: if the IOKit plane yielded nothing (sandboxed
+        // or restricted hosts), still expose the MOUNTED volumes from
+        // getfsstat — every Mac has at least the root volume. Honest: no
+        // invented sizes; capacity comes from the scan opening the device.
+        if out.is_empty() {
+            for m in &mounts {
+                if !m.from.starts_with("/dev/") {
+                    continue;
+                }
+                let bsd = &m.from[5..];
+                if bsd.starts_with("disk") {
+                    let whole = disk_of_bsd(&m.from).is_some_and(|d| d == bsd);
+                    out.push(OsDevice {
+                        id: format!("{}{bsd}", if whole { "bsd" } else { "vol" }),
+                        name: display_name(bsd, whole, 0, Some(m.fstype.as_str())),
+                        kind: 3,
+                        total: 0,
+                        mounted: true,
+                        is_system: m.on == "/",
+                        fs: m.fstype.clone(),
+                        mount: m.on.clone(),
+                        path: m.from.clone(),
+                        writable: true,
+                    });
+                }
+            }
+        }
+
+        out.retain(|d| d.total > 0 || d.mounted);
         out.sort_by(|a, b| a.id.cmp(&b.id));
         out
     }
 
     fn display_name(bsd: &str, is_disk: bool, size: u64, fs: Option<&str>) -> String {
+        if size == 0 {
+            return match fs {
+                Some(f) if !f.is_empty() => format!("{bsd} · {f}"),
+                _ => bsd.to_string(),
+            };
+        }
         let gb = size / (1024 * 1024 * 1024);
         if is_disk {
             format!("Disk {bsd} ({gb} GB)")
@@ -531,6 +571,7 @@ mod windows {
         reserved: usize,
     }
 
+    #[link(name = "setupapi")]
     extern "system" {
         fn SetupDiGetClassDevsW(
             guid: *const Guid,
@@ -563,12 +604,20 @@ mod windows {
             needed: *mut u32,
         ) -> c_int;
         fn SetupDiDestroyDeviceInfoList(h: Handle) -> c_int;
+    }
+
+    #[link(name = "cfgmgr32")]
+    extern "system" {
         fn CM_Get_DevNode_Status(
             status: *mut u32,
             problem: *mut u32,
             devinst: u32,
             flags: u32,
         ) -> c_int;
+    }
+
+    // kernel32 (auto-linked)
+    extern "system" {
         fn CreateFileW(
             name: *const u16,
             access: u32,

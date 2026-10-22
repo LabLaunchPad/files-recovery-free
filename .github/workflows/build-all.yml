@@ -226,27 +226,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust
-      - name: Cross-compile the engine (device + simulator slices)
+      - name: Cross-compile the engine (device + arm64 simulator slices)
         run: |
           cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target aarch64-apple-ios
           cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target aarch64-apple-ios-sim
-          cargo build --manifest-path rust/Cargo.toml --release -p recovery-ffi --target x86_64-apple-ios
       - name: Verify static-lib slices exist
         run: |
           test -f rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a
           test -f rust/target/aarch64-apple-ios-sim/release/librecovery_core_ffi.a
-          test -f rust/target/x86_64-apple-ios/release/librecovery_core_ffi.a
           file rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a
       - name: Package engine xcframework (device + simulator slices)
         run: |
           xcodebuild -create-xcframework \
             -library rust/target/aarch64-apple-ios/release/librecovery_core_ffi.a \
             -library rust/target/aarch64-apple-ios-sim/release/librecovery_core_ffi.a \
-            -library rust/target/x86_64-apple-ios/release/librecovery_core_ffi.a \
             -output recovery_core_ffi.xcframework
           ls -R recovery_core_ffi.xcframework | head -20
           zip -qry files-recovery-free-ios-engine.xcframework.zip recovery_core_ffi.xcframework
