@@ -546,8 +546,10 @@ mod windows {
     const IOCTL_STORAGE_GET_DEVICE_NUMBER: u32 = 0x0002_D108;
     const ERROR_NO_MORE_ITEMS: u32 = 259;
 
-    // {53f56307-b6bf-11d0-94f2-00a0c91efb8b} GUID_DEVINTERFACE_DISK
-    const DISK_GUID: [u32; 4] = [0x53f5_6307, 0x11d0_b6bf, 0x94f2_00a0, 0x8bef_b8c9];
+    // {53f56307-b6bf-11d0-94f2-00a0c91efb8b} GUID_DEVINTERFACE_DISK,
+    // laid out exactly as Windows stores it in memory (LE u32 x4):
+    // Data1 | Data2:Data3 | Data4[0..4] raw | Data4[4..8] raw.
+    const DISK_GUID: [u32; 4] = [0x53f5_6307, 0x11d0_b6bf, 0xa000_f294, 0x8bfb_1ec9];
 
     #[repr(C)]
     #[derive(Clone, Copy)]
