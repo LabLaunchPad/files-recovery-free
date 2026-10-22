@@ -2,7 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!--
+	  Permission pack (research-verified, docs/PERMISSIONS.md):
+	  - The App Sandbox entitlement is deliberately ABSENT: sandboxed builds
+	    cannot read raw volumes or arbitrary files. Mac App Store is out of
+	    scope for this product; distribution is notarized DMG + Homebrew cask.
+	  - The network-server entitlement is deliberately ABSENT: the app is
+	    offline-first (no telemetry, no uploads) — keep the trust claim true.
+	-->
 </dict>
 </plist>

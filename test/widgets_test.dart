@@ -64,8 +64,29 @@ class _InstantEngine implements RecoveryEngine {
   @override
   Stream<EngineProgress> recover(
       String sessionId, List<String> fileIds, Uri destination,
-      {required bool keepFolderStructure, required bool byCaptureDate}) =>
-      _stream();
+      {required bool keepFolderStructure, required bool byCaptureDate}) {
+    _receipts = [
+      for (final id in fileIds)
+        RecoveryReceipt(
+            fileId: id,
+            fileName: 'DSC_00${id.substring(1)}.JPG',
+            verified: true,
+            targetPath:
+                '${destination.toFilePath()}DCIM/DSC_00${id.substring(1)}.JPG'),
+    ];
+    return _stream();
+  }
+
+  List<RecoveryReceipt> _receipts = const [];
+
+  @override
+  Future<List<RecoveryReceipt>> receipts() async => List.of(_receipts);
+
+  @override
+  String get engineName => 'Instant engine';
+
+  @override
+  bool get isDemo => true;
 
   @override
   Future<void> pause() async {}

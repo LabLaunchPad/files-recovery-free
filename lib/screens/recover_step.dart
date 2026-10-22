@@ -135,6 +135,9 @@ class RecoverStep extends StatelessWidget {
             '${s.receipts.length - verified} ${S.recoverNotVerified}',
             style: const TextStyle(
                 fontSize: FrfType.body, color: FrfColors.mutedOnLight)),
+        const SizedBox(height: FrfSpacing.s),
+        EngineBadge(
+            engineName: s.engine.engineName, isDemo: s.engine.isDemo),
         const SizedBox(height: FrfSpacing.xl),
         ...s.receipts.take(12).map((r) => Padding(
               padding: const EdgeInsets.only(bottom: FrfSpacing.s),

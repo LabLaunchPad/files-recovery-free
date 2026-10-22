@@ -10,6 +10,7 @@ import 'package:files_recovery_free/state/recovery_session.dart';
 /// Scripted engine: deterministic results, full observability of calls.
 class ScriptedEngine implements RecoveryEngine {
   bool cancelled = false;
+  List<RecoveryReceipt> _receipts = const [];
   @override
   Future<List<DeviceInfo>> listDevices() async => const [
         DeviceInfo(
@@ -57,8 +58,28 @@ class ScriptedEngine implements RecoveryEngine {
   @override
   Stream<EngineProgress> recover(
       String sessionId, List<String> fileIds, Uri destination,
-      {required bool keepFolderStructure, required bool byCaptureDate}) =>
-      _stream();
+      {required bool keepFolderStructure, required bool byCaptureDate}) {
+    // Engine-sourced receipts (same contract the FFI engine honors).
+    _receipts = [
+      for (final id in fileIds)
+        RecoveryReceipt(
+            fileId: id,
+            fileName: 'file${id.substring(1)}.jpg',
+            verified: true,
+            targetPath:
+                '${destination.toFilePath()}DCIM/file${id.substring(1)}.jpg'),
+    ];
+    return _stream();
+  }
+
+  @override
+  Future<List<RecoveryReceipt>> receipts() async => List.of(_receipts);
+
+  @override
+  String get engineName => 'Scripted engine';
+
+  @override
+  bool get isDemo => true;
 
   @override
   Future<void> pause() async {}
@@ -186,11 +207,16 @@ void main() {
     s.toggleSelect('f0');
     s.toggleSelect('f1');
     s.startRecovery();
-    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await Future<void>.delayed(const Duration(milliseconds: 150));
     expect(s.recoverPhase, RecoverPhase.done);
     expect(s.receipts, hasLength(2));
     expect(s.receipts.every((r) => r.verified), isTrue);
     expect(s.receipts.first.targetPath, contains('file0.jpg'));
+    // Receipts are ENGINE-sourced: they must match the engine's own answer
+    // (no fabrication from scan metadata anywhere in the UI layer).
+    final engineAnswer = await s.engine.receipts();
+    expect(s.receipts.first.targetPath, engineAnswer.first.targetPath);
+    expect(s.receipts.length, engineAnswer.length);
   });
 
   test('startRecovery is a no-op when nothing selected', () async {

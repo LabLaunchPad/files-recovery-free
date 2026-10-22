@@ -42,9 +42,13 @@ class ChooseStep extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const StepHeader(0, S.chooseTitle, subtitle: S.chooseSubtitle),
+                  const SizedBox(height: FrfSpacing.m),
+                  EngineBadge(
+                      engineName: s.engine.engineName,
+                      isDemo: s.engine.isDemo),
                   if (s.errorText != null) ...[
                     const SizedBox(height: FrfSpacing.m),
-                    _ErrorBar(text: s.errorText!),
+                    _ErrorBar(text: s.errorText!, hint: s.errorHint),
                   ],
                   const SizedBox(height: FrfSpacing.xl),
                   if (s.busy && s.devices.isEmpty)
@@ -199,7 +203,8 @@ class _DeviceCard extends StatelessWidget {
 
 class _ErrorBar extends StatelessWidget {
   final String text;
-  const _ErrorBar({required this.text});
+  final String? hint;
+  const _ErrorBar({required this.text, this.hint});
 
   @override
   Widget build(BuildContext context) {
@@ -217,9 +222,19 @@ class _ErrorBar extends StatelessWidget {
               color: FrfColors.bad, size: 18),
           const SizedBox(width: FrfSpacing.s),
           Expanded(
-              child: Text(text,
-                  style: const TextStyle(
-                      fontSize: 13, color: FrfColors.bad))),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(text,
+                    style: const TextStyle(
+                        fontSize: 13, color: FrfColors.bad)),
+                if (hint != null) ...[
+                  const SizedBox(height: 4),
+                  Text(hint!,
+                      style: const TextStyle(
+                          fontSize: 12, color: FrfColors.mutedOnLight)),
+                ],
+              ])),
         ],
       ),
     );

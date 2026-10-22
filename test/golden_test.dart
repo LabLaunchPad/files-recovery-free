@@ -20,6 +20,8 @@ import 'package:files_recovery_free/state/recovery_session.dart';
 /// Engine that walks a scripted progress sequence and holds at the end so a
 /// mid-flight screen can be captured deterministically.
 class HeldScriptEngine implements RecoveryEngine {
+  List<RecoveryReceipt> _receipts = const [];
+
   @override
   Future<List<DeviceInfo>> listDevices() async => const [
         DeviceInfo(
@@ -72,8 +74,32 @@ class HeldScriptEngine implements RecoveryEngine {
   @override
   Stream<EngineProgress> recover(
       String sessionId, List<String> fileIds, Uri destination,
-      {required bool keepFolderStructure, required bool byCaptureDate}) =>
-      _hold(fraction: 0.55, found: fileIds.length);
+      {required bool keepFolderStructure, required bool byCaptureDate}) {
+    // Engine-sourced receipts from the deterministic catalog — the golden
+    // harness consumes these via the same contract the app uses.
+    final cat = _catalogFromJson();
+    final byId = {for (final f in cat) f.id: f};
+    _receipts = [
+      for (final id in fileIds)
+        if (byId[id] != null)
+          RecoveryReceipt(
+              fileId: id,
+              fileName: byId[id]!.name,
+              verified: byId[id]!.state != FileState.unreadable,
+              targetPath:
+                  '${destination.toFilePath()}${byId[id]!.relativeFolder}/${byId[id]!.name}'),
+    ];
+    return _hold(fraction: 0.55, found: fileIds.length);
+  }
+
+  @override
+  Future<List<RecoveryReceipt>> receipts() async => List.of(_receipts);
+
+  @override
+  String get engineName => 'Golden script engine';
+
+  @override
+  bool get isDemo => true;
 
   @override
   Future<void> pause() async {}
@@ -278,18 +304,12 @@ void main() {
       s.foundFiles = await s.engine.browse('session');
       s.selectedFileIds.addAll(['f0', 'f1', 'f5']);
       s.startRecovery();
-      // Force the completed state for the receipt capture.
+      // Force the completed state, then pull receipts from the ENGINE —
+      // the same binding the app uses (no fabricated receipts here).
       s.recoverPhase = RecoverPhase.done;
       s.busy = false;
       s.receipts.clear();
-      for (final id in s.selectedFileIds) {
-        s.receipts.add(RecoveryReceipt(
-            fileId: id,
-            fileName: 'file_$id.jpg',
-            verified: true,
-            targetPath:
-                '/tmp/files-recovery-free/output/DCIM/100NIKON/file_$id.jpg'));
-      }
+      s.receipts.addAll(await s.engine.receipts());
       s.notifyListeners();
     });
     await tester.pump();

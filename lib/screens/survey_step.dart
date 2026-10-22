@@ -64,7 +64,7 @@ class SurveyStep extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const SimWatermark(),
+                          if (session.engine.isDemo) const SimWatermark(),
                           const SizedBox(height: FrfSpacing.m),
                           DriveMap(survey: survey),
                           const SizedBox(height: FrfSpacing.s),

@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Permission pack (docs/PERMISSIONS.md): ZERO permission grants.
+         The honest free mode reads MediaStore trash (IS_TRASHED) and scans
+         user-picked folders via the Storage Access Framework — neither
+         needs a runtime permission. Never add the all-files-access or any
+         storage permission here: Play's Deceptive Behavior policy bans the
+         experience such grants imply, and the CI guard fails the build. -->
     <application
         android:label="Files Recovery FREE"
         android:name="${applicationName}"

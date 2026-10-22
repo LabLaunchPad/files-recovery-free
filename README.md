@@ -127,6 +127,7 @@ This repo root **is** the Flutter project. Extra directories:
 | `evidence/` | Verification artifacts — test logs, 12-shot interactive web walkthrough, live Linux desktop session, brand icons |
 | `docs/` | `Files_Recovery_FREE_Verification_Report.pdf` — the 10-page verification report |
 | `docs/PLATFORMS.md` | Per-OS playbooks (Windows/macOS/Linux/Android/iOS/Web), Phase 3 engine stack decisions, trust checklist |
+| `docs/PERMISSIONS.md` | Permission pack: what each edition asks for and why, with the CI regression guard |
 | `docs/phase2_gap_analysis.md` | REA gap analysis of the Rust engine phase |
 
 ## Legal notes

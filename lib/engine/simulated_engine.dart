@@ -24,6 +24,7 @@ class SimulatedEngine implements RecoveryEngine {
   late final Random _seeded = Random(seed);
 
   List<RecoveredFile> _catalog = const [];
+  List<RecoveryReceipt> _lastReceipts = const [];
 
   // ---------------------------------------------------------------- devices
   @override
@@ -157,6 +158,22 @@ class SimulatedEngine implements RecoveryEngine {
   }) {
     final ids = List.of(fileIds);
     return _run('recover', () async* {
+      // Receipts are engine-sourced evidence: computed from the catalog the
+      // engine itself verified, targeting the real destination path.
+      final catalog = _catalog.isNotEmpty ? _catalog : _buildCatalog();
+      _catalog = catalog;
+      final byId = {for (final f in catalog) f.id: f};
+      _lastReceipts = [
+        for (final id in ids)
+          if (byId[id] != null)
+            RecoveryReceipt(
+              fileId: id,
+              fileName: byId[id]!.name,
+              verified: byId[id]!.state != FileState.unreadable,
+              targetPath:
+                  '${destination.toFilePath()}${keepFolderStructure ? '${byId[id]!.relativeFolder}/' : ''}${byId[id]!.name}',
+            ),
+      ];
       await for (final p in _timedProgress(
           totalBytes: max(1, ids.length) * 4 * 1024 * 1024,
           tick: _ms(60),
@@ -167,10 +184,20 @@ class SimulatedEngine implements RecoveryEngine {
     }());
   }
 
+  /// Receipts from the last completed recovery run (engine-sourced).
+  @override
+  Future<List<RecoveryReceipt>> receipts() async => List.of(_lastReceipts);
+
+  @override
+  String get engineName => 'Simulated engine';
+
+  @override
+  bool get isDemo => true;
+
   Stream<EngineProgress> _run(String op, Stream<EngineProgress> inner) async* {
     if (_busy) {
-      throw const EngineException(
-          'Another operation is still running.', 'concurrent-op');
+      throw const EngineException('Another operation is still running.',
+          'concurrent-op', FrfErrorCode.engineBusy);
     }
     _busy = true;
     _cancelled = false;
@@ -262,6 +289,7 @@ class SimulatedEngine implements RecoveryEngine {
   /// Test hook: determinism check uses this to reset internal caches.
   void resetForTest() {
     _catalog = const [];
+    _lastReceipts = const [];
     _paused = false;
     _cancelled = false;
     _busy = false;

@@ -85,11 +85,21 @@
 
 ## REA gap top items (see docs/phase2_gap_analysis.md for the engine-side list)
 
-- Critical: Windows manifest elevation strategy · macOS sandbox entitlement · Android zero
-  permissions · zero `Semantics` labels anywhere in the UI.
-- High: placeholder LICENSE + missing third-party notices · UI-only license gate · all errors
-  collapsed to one string · fabricated receipts while `frf_receipt_*` is unbound · no signing on any
-  platform · `/tmp` hardcoded destinations with the folder picker disabled · no purchase plumbing.
+- Critical: Windows manifest elevation strategy — **LANDED (asInvoker pinned,
+  PR quick-wins)** · macOS sandbox entitlement — **LANDED (removed from
+  Release, PR quick-wins)** · Android zero permissions — **VERIFIED + guarded
+  by CI test (PR quick-wins)** · zero `Semantics` labels anywhere in the UI
+  — open (Phase 3 accessibility pass).
+- High: placeholder LICENSE + missing third-party notices — open · UI-only
+  license gate — open (Ed25519 planned) · all errors collapsed to one string
+  — **LANDED (error-code map + per-OS remediation, PR quick-wins)** ·
+  fabricated receipts while `frf_receipt_*` is unbound — **LANDED (engine
+  receipts bound via FFI, PR quick-wins)** · no signing on any platform —
+  open · `/tmp` hardcoded destinations with the folder picker disabled —
+  open (Phase 3 file pickers) · no purchase plumbing — open.
+- Also landed in quick-wins: **engine badge / watermark gate**
+  (`EngineBadge` + `isDemo`) so simulated output can never pass as real
+  recovery evidence, and the demo watermark now disappears on real engines.
 
 ## Trust & distribution checklist (from the competitive teardown)
 

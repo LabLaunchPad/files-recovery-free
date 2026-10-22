@@ -58,6 +58,12 @@ void main() {
     expect(engine.version, contains('recovery-ffi'));
   });
 
+  test('engine identity: native engine is not demo (watermark gate)', () {
+    expect(engine.isDemo, isFalse);
+    expect(engine.engineName, contains('Native'));
+    expect(engine.engineName, contains(engine.version));
+  });
+
   test('lists the registered disk image as a scannable device', () async {
     final img = await _buildImage(
         '${Directory.systemTemp.path}/frf_dart_img_${DateTime.now().microsecondsSinceEpoch}.img');
@@ -144,6 +150,23 @@ void main() {
     }
     // the two selected copies are byte-identical (duplicate detection said so)
     expect(written[0], written[1], reason: 'identical content, identical bytes');
+
+    // receipts come from the ENGINE (frf_receipt_*): per-file verification
+    // evidence whose target paths point at the files ACTUALLY written above.
+    final receipts = await engine.receipts();
+    expect(receipts, hasLength(2), reason: 'one receipt per recovered file');
+    for (var i = 0; i < 2; i++) {
+      expect(receipts[i].fileId, files[i].id);
+      expect(receipts[i].fileName, files[i].name);
+      expect(receipts[i].verified, isTrue,
+          reason: 'recover+verify re-read the bytes from the destination');
+      expect(File(receipts[i].targetPath).existsSync(), isTrue,
+          reason: 'receipt path must exist: ${receipts[i].targetPath}');
+      expect(receipts[i].targetPath,
+          startsWith(dest.toFilePath().endsWith('/')
+              ? dest.toFilePath()
+              : '${dest.toFilePath()}/'));
+    }
 
     // cleanup
     Directory(dest.toFilePath()).deleteSync(recursive: true);
